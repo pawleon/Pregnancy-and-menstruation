@@ -1,0 +1,14 @@
+{
+    "display_name": "Reproductive",
+    "loading_order": 10,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "style.css",
+    "author": "MomCta",
+    "version": "3.20.0",
+    "homePage": "",
+    "source": "",
+    "auto_update": false,
+    "generate_interceptor": "reproductiveSystemContextFilter"
+}

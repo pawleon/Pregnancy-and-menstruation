@@ -7,7 +7,7 @@ import { saveSettingsDebounced } from './state.js';
 import { CHANCES } from './config.js';
 import { protectionRoll } from './contraception-rules.js';
 import { getSettings, getPregnancyData, getPartnerData, getCycleDay, setCycleDay, isManualCycleProtected, carrierName, L, getContraception, getContraceptionDetails, getParentProfile, syncBabyLegacyFields } from './state.js';
-import { canCarry, hasMenstrualCycle, hasOvulation, heatDay, heatSettings } from './omegaverse.js';
+import { canCarry, hasMenstrualCycle, hasOvulation, heatDay, heatSettings, isOmegaverse } from './omegaverse.js';
 import { generateBabyGenetics, overrideBabyGenetics } from './genetics.js';
 import { rollTest, isObvious, postpartumState, fertileWindow, inheritLooks, conceptionStruggle, missedDays } from './fertility.js';
 import { roll, getCycleModifier, formatSexIcons, formatFetusCount, calculateWeeksFromDates, getHealthInfo, rollPlannedComplications } from './helpers.js';
@@ -38,7 +38,36 @@ function newChildGenome() {
 function assignFetalGenomes(carrier) {
     carrier.fetusGenetics=Array.from({length:Math.max(1,carrier.fetusCount||1)},()=>newChildGenome());
 }
+export function hydrateUnknownFetalGenetics(carrier) {
+    if (!carrier?.isPregnant) return false;
+    const count=Math.max(1,carrier.fetusCount||1);
+    const existing=Array.isArray(carrier.fetusGenetics)?carrier.fetusGenetics:[];
+    const knownA=getParentProfile('user'),knownB=getParentProfile('char');
+    if (!Object.values(knownA).some(Boolean) && !Object.values(knownB).some(Boolean))return false;
+    let changed=false;
+    const next=Array.from({length:count},(_,i)=>{
+        const prev=existing[i]||{};
+        const generated=generateBabyGenetics(knownA,knownB);
+        const out=structuredClone(prev);
+        for(const field of ['hair','eyes','skin','face','height']) {
+            if(!out[field] && generated[field]){out[field]=generated[field];changed=true;}
+        }
+        if(!out.species || out.species==='Unknown' || /unknown ancestry$/i.test(out.species)) {
+            if(generated.species && generated.species!=='Unknown' && out.species!==generated.species){out.species=generated.species;changed=true;}
+        }
+        for(const field of ['traits','abilities'])if(!Array.isArray(out[field]) || !out[field].length){
+            if(generated[field]?.length){out[field]=generated[field];changed=true;}
+        }
+        out.appearance=[];
+        for(const [key,label] of [['hair','Hair'],['eyes','Eyes'],['skin','Complexion'],['face','Facial traits']])if(out[key])out.appearance.push(`${label}: ${out[key]}`);
+        if(out.traits?.length)out.appearance.push(`Inherited traits: ${out.traits.join(', ')}`);
+        return out;
+    });
+    if(changed || existing.length!==count){carrier.fetusGenetics=next;return true;}
+    return false;
+}
 function newbornGenomesFor(carrier,count) {
+    hydrateUnknownFetalGenetics(carrier);
     return Array.from({length:count},(_,i)=>carrier?.fetusGenetics?.[i]
         ? structuredClone(carrier.fetusGenetics[i]) : newChildGenome());
 }
@@ -150,6 +179,12 @@ export function applyScanResult(result) {
         if (!isNaN(newDate.getTime())) {
             const oldDate = p.rpDate;
             p.rpDate = newDate.toISOString();
+            // First available story date anchors independent heat/rut once.
+            for (const who of ['user','char']) {
+                const suffix=who==='char'?'Char':'User';
+                if (s['heatMode'+suffix]==='independent' && !s['heatAnchor'+suffix])
+                    s['heatAnchor'+suffix]=p.rpDate.slice(0,10);
+            }
             if (oldDate !== p.rpDate) {
                 updated = true;
 
@@ -242,6 +277,11 @@ export function applyScanResult(result) {
             }
         } catch (e) { reportError('[Reproductive] handled exception:', e); }
 
+        // User-initiated manual delivery can be undone as one complete action.
+        if (birthSource==='manual' && !s._historyScanInProgress) {
+            const {_history,_undoSnapshot,_turnBaseline,_manualDeliveryBackup,...before}=p;
+            p._manualDeliveryBackup=structuredClone(before);
+        }
         // Save pregnancy data before resetting
         const babySex = p.fetusSex.length > 0 ? [...p.fetusSex] : ['?'];
         const inheritedFetalGenomes=newbornGenomesFor(p,p.fetusCount||1);
@@ -293,7 +333,7 @@ export function applyScanResult(result) {
         } catch (e) { reportError('[Reproductive] handled exception:', e); }
 
         // Internal implementation note.
-        p.postpartum = { startRpDate: birthRpDate, lactating: true };
+        p.postpartum = { startRpDate: birthRpDate, lactating: null, feeding: 'unknown', cycleResumed: false };
         p.pregnancyKnown = false;
         p.lastTestResult = null;
         p.babyHealth = 'normal';
@@ -559,8 +599,8 @@ export function checkConception(encounterMethods = []) {
     let chance = Math.max(0, Math.min(100, Math.round(CHANCES.base * cycleModifier)));
     const heat=heatDay(s,'user',currentCycleDay,p.rpDate);
     const heatRules=heatSettings(s,'user');
-    if(heatRules.fertility==='required' && !heat?.active)chance=0;
-    if(heatRules.fertility==='boost' && heat?.active)chance=Math.min(100,Math.round(chance*1.5));
+    if (isOmegaverse(s) && heatRules.fertility==='required' && !heat?.active)chance=0;
+    if (isOmegaverse(s) && heatRules.fertility==='boost' && heat?.active)chance=Math.min(100,Math.round(chance*1.5));
 
     // Internal implementation note.
     const pp = getPostpartum(p, p);
@@ -1129,8 +1169,8 @@ export function partnerCheckConception(encounterMethods = []) {
     let chance = Math.max(0, Math.min(100, Math.round(CHANCES.base * cycleModifier)));
     const heat=heatDay(s,'char',c.cycleDay||1,p.rpDate);
     const heatRules=heatSettings(s,'char');
-    if(heatRules.fertility==='required' && !heat?.active)chance=0;
-    if(heatRules.fertility==='boost' && heat?.active)chance=Math.min(100,Math.round(chance*1.5));
+    if (isOmegaverse(s) && heatRules.fertility==='required' && !heat?.active)chance=0;
+    if (isOmegaverse(s) && heatRules.fertility==='boost' && heat?.active)chance=Math.min(100,Math.round(chance*1.5));
     const contraception = getContraception('char');
     const protection = protectionRoll(contraception, getContraceptionDetails('char'), p.rpDate, Math.random, encounterMethods);
     if (protection.protected) chance = 0;
@@ -1178,6 +1218,10 @@ export function partnerBirth(babyTraits, options = {}) {
     const c = getPartnerData();
     const birthSource = options.source || 'tag';
     if (!canTriggerBirth(c, s, birthSource)) return false;
+    if(birthSource==='manual' && !s._historyScanInProgress){
+        const {_history,_undoSnapshot,_turnBaseline,_manualDeliveryBackup,...before}=p;
+        p._manualDeliveryBackup=structuredClone(before);
+    }
 
     const count = c.fetusCount || 1;
     const sexes = c.fetusSex?.length ? [...c.fetusSex] : ['?'];
@@ -1214,7 +1258,7 @@ export function partnerBirth(babyTraits, options = {}) {
         });
     }
     syncBabyLegacyFields(p);
-    c.postpartum = { startRpDate: birthRpDate, lactating: true };
+    c.postpartum = { startRpDate: birthRpDate, lactating: null, feeding: 'unknown', cycleResumed: false };
     c.pregnancyKnown = false;
     c.lastTestResult = null;
 
@@ -1414,14 +1458,24 @@ export function revealPregnancy(who = 'user') {
 
 // Internal implementation note.
 export function getPostpartum(carrier, root) {
+    // A real new pregnancy may coexist with past birth history, but should not
+    // simultaneously show a current postpartum menstrual status.
+    if (carrier?.isPregnant) return null;
     const pp = carrier?.postpartum;
     if (!pp?.startRpDate || !root?.rpDate) return null;
     const ms = new Date(root.rpDate).getTime() - new Date(pp.startRpDate).getTime();
     if (isNaN(ms) || ms < 0) return null;
     const days = Math.floor(ms / 86400000);
-    const st = postpartumState(days, pp.lactating !== false);
-    if (days > 730) return null;
-    return { ...st, lactating: pp.lactating !== false && st.lactating };
+    const who=carrier===getPartnerData()?'char':'user';
+    const suffix=who==='char'?'Char':'User';
+    const s=getSettings();
+    const mode=s['postpartumReturnMode'+suffix] || 'estimated';
+    const feeding=pp.feeding || (pp.lactating===true?'breastfeeding':pp.lactating===false?'formula':'unknown');
+    const defaultDays=feeding==='breastfeeding'?180:feeding==='mixed'?90:feeding==='formula'?45:null;
+    const returnDays=mode==='manual'?null:mode==='custom'?Number(s['postpartumReturnDays'+suffix]):defaultDays;
+    const st = postpartumState(days, pp.lactating===true ? true : pp.lactating===false ? false : null,returnDays);
+    if (days > 730 && !pp.cycleResumed) return null;
+    return { ...st, feeding, cycleReturned:!!pp.cycleResumed || st.cycleReturned, fertilityMul:pp.cycleResumed?1:st.fertilityMul, lactating:pp.lactating===true && st.lactating };
 }
 
 // Internal implementation note.
@@ -1429,6 +1483,7 @@ export function setLactating(who, value) {
     const c = who === 'char' ? getPartnerData() : getPregnancyData();
     if (!c.postpartum) return false;
     c.postpartum.lactating = !!value;
+    c.postpartum.feeding = value ? 'breastfeeding':'formula';
     saveSettingsDebounced();
     _syncUI();
     _updatePromptInjection();
@@ -1493,4 +1548,45 @@ export function mergeBabyAppearance(inherited, proposed) {
     const hair = base.some(x => /\u0432\u043e\u043b\u043e\u0441|hair/i.test(x));
     const eyes = base.some(x => /\u0433\u043b\u0430\u0437|eyes?/i.test(x));
     return [...new Set([...base, ...details.filter(x => !(hair && /\u0432\u043e\u043b\u043e\u0441|\u0440\u044b\u0436|\u0431\u043b\u043e\u043d|\u0431\u0440\u044e\u043d\u0435\u0442|hair|redhead|blond|brunet/i.test(x)) && !(eyes && /\u0433\u043b\u0430\u0437|eyes?/i.test(x)))])].slice(0, 8);
+}
+
+// Explicit test undo, deliberately separate from removing a child from tracking.
+export function undoManualDelivery() {
+    const p=getPregnancyData();
+    if(!p._manualDeliveryBackup)return false;
+    const previous=structuredClone(p._manualDeliveryBackup);
+    const preservedHistory=p._history;
+    Object.keys(p).forEach(k=>delete p[k]);
+    Object.assign(p,previous);
+    if(preservedHistory)p._history=preservedHistory;
+    delete p._manualDeliveryBackup;
+    syncBabyLegacyFields(p);refreshSnap();saveSettingsDebounced();
+    _syncUI();_updatePromptInjection();_renderInfoblock();
+    return true;
+}
+export function clearPostpartum(who='user') {
+    const c=who==='char'?getPartnerData():getPregnancyData();
+    if(!c.postpartum)return false;
+    c.postpartum=null;
+    c._dynamic={};
+    refreshSnap();saveSettingsDebounced();_syncUI();_updatePromptInjection();_renderInfoblock();
+    return true;
+}
+export function setPostpartumFeeding(who, mode) {
+    if(!['unknown','breastfeeding','mixed','formula'].includes(mode))return false;
+    const c=who==='char'?getPartnerData():getPregnancyData();
+    if(!c.postpartum)return false;
+    c.postpartum.feeding=mode;
+    c.postpartum.lactating=mode==='unknown'?null:(mode==='breastfeeding'||mode==='mixed');
+    refreshSnap();saveSettingsDebounced();_syncUI();_updatePromptInjection();_renderInfoblock();
+    return true;
+}
+export function resumePostpartumCycle(who='user') {
+    const c=who==='char'?getPartnerData():getPregnancyData();
+    if(!c.postpartum)return false;
+    c.postpartum.cycleResumed=true;
+    c.cycleDay=1;
+    c._dynamic={};
+    refreshSnap();saveSettingsDebounced();_syncUI();_updatePromptInjection();_renderInfoblock();
+    return true;
 }

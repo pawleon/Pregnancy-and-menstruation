@@ -160,7 +160,7 @@ You can install this extension **directly from its GitHub repository URL**. You 
 
 1. Open **SillyTavern** and select **Extensions**.
 2. Choose **Install Extension**.
-3. Paste the GitHub URL for **this modified extension**, for example `https://github.com/YOUR-USERNAME/YOUR-REPOSITORY` (replace this placeholder with the real repository URL).
+3. Paste the GitHub URL for **this modified extension**
 4. Choose a branch if necessary and select whether to install for **the current user** or **all users**.
 5. Click **Install**. SillyTavern downloads and loads the extension automatically.
 6. Refresh SillyTavern if needed. Open **Extensions** to check that the Reproductive System settings appear.

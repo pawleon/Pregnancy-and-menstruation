@@ -1492,3 +1492,44 @@ body[data-rp-light] .rp-th-head-icon i { color: #7a5cba; }
 .reproductive-system-settings .rp-setting-row label { flex:0 0 auto; }
 .reproductive-system-settings .rp-setting-row select { flex:1 1 100px; width:auto; min-width:80px; }
 .reproductive-system-settings .rp-hygiene-button { flex:0 0 auto; width:auto !important; min-width:76px; white-space:nowrap !important; word-break:normal; overflow-wrap:normal; }
+
+/* v3.21: readable delivery dialog in light mode, including traits and labels. */
+body[data-rp-light] #repro-birth-overlay .rb-dialog {
+  background: #fbf9fe !important;
+  color: #2c2636 !important;
+}
+body[data-rp-light] #repro-birth-overlay .rb-dialog .rb-header-title,
+body[data-rp-light] #repro-birth-overlay .rb-dialog .rb-trait-values,
+body[data-rp-light] #repro-birth-overlay .rb-dialog .rb-special-desc,
+body[data-rp-light] #repro-birth-overlay .rb-dialog .rb-name-label,
+body[data-rp-light] #repro-birth-overlay .rb-dialog label {
+  color: #332c3d !important;
+  opacity: 1 !important;
+}
+body[data-rp-light] #repro-birth-overlay .rb-dialog .rb-trait-label {
+  color: #62566b !important;
+  opacity: 1 !important;
+}
+body[data-rp-light] #repro-birth-overlay .rb-dialog .rb-name-input {
+  background: #fffdf7 !important;
+  color: #272331 !important;
+  border: 1px solid #b8a5c2 !important;
+}
+body[data-rp-light] #repro-birth-overlay .rb-dialog .rb-name-input::placeholder {
+  color: #6f6779 !important;
+  opacity: 1 !important;
+}
+body[data-rp-light] #repro-birth-overlay .rb-dialog .rb-traits,
+body[data-rp-light] #repro-birth-overlay .rb-dialog .rb-trait-section {
+  color: #383043 !important;
+  opacity: 1 !important;
+}
+body[data-rp-light] #repro-birth-overlay .rb-dialog .rb-baby-card {
+  border-color: #d1c6db !important;
+}
+.rb-name-label { display:block; font-size:11px; font-weight:600; margin:7px 0 4px; }
+/* Preserve dark-theme colors while preventing the header badge from slicing a word. */
+details.repro.repro-multi > summary .repro-header { flex-wrap: wrap; }
+details.repro.repro-multi > summary .repro-title { word-break: normal; overflow-wrap: normal; min-width: 120px; flex: 1 1 120px; }
+details.repro.repro-multi > summary .repro-badge { flex: 2 1 180px; min-width: 0; white-space: normal; }
+

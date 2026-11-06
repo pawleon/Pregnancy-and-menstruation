@@ -16,6 +16,7 @@ An independently modified SillyTavern extension based on [Pregnancy and Menstrua
 
 ## v3.20: Complete biology, mixed-species inheritance, and Omegaverse cycle update (November 2026)
 
+This is a **single integrated update** covering all ten agreed requirements, not a replacement or removal of the working v3.17–v3.19 contraception system. Please back up chats, extension settings, and the previously working extension before updating. Install/update from a **GitHub repository URL in SillyTavern Extensions**; do not install a duplicate extension with the same manifest.
 
 ### Independent Me / Bot biology and Omegaverse
 
@@ -47,6 +48,8 @@ An independently modified SillyTavern extension based on [Pregnancy and Menstrua
 5. Repeat the previously successful implant/IUD/pill/injection tests, including color-coded notifications and deleting or regenerating a triggering RP message. Confirm the correct recipient is updated.
 
 **Important limitations:** No full SillyTavern browser/device integration test has been completed in this package. Custom ancestry is fiction-first and depends on accurate parent profiles. Physical contraception effectiveness, reproductive hormone patterns and age-related milestones are simplified roleplay mechanics, not clinical advice. Only the `M`/`F`/`?` sex values are modeled, and a completed AI-generated contraceptive event may need a manual correction if a model fails to emit an explicit tag.
+
+## v3.19: Per-chat pregnancy record persistence and migration (November 2026)
 
 - **Pregnancy, baby and menstrual history are saved in native per-chat metadata** (`reproductiveSystem_pregnancyData_v1`), matching the independently stored contraception system. The old global `chatPregnancyData` collection is now read-only migration input.
 - **Existing records are copied, not removed:** when a chat is first opened, the extension searches its legacy chat identifiers, deep-copies any matching pregnancy and baby data, and saves the independent copy in that chat's metadata. Do not delete old settings until your migrated chats have been inspected.
@@ -123,7 +126,7 @@ For implant insertion, `"method":"implant"` can also include `"expires":"2031-11
 **No automatic change** for an appointment tomorrow, an IUD merely discussed, a character thinking about getting an implant, a flashback, or an OOC test. An event's actual completed result should be present in the current scene. If the model invents or omits a marker, verify the UI and correct it manually.
 
 
-## Story-aware detection for all contraception methods (v3.19)
+## Story-aware detection for all contraception methods
 
 Every primary method supports `start` and `stop` via explicit hidden event markers. The ongoing methods (IUD, implant, pill, shot, patch and vaginal ring) also have conservative English-language detection for clear completed actions, such as a shot being administered or a ring actually inserted. Missed combined-pill actions can also be detected from explicit scenes. Detection is not guaranteed in every language or model output.
 
@@ -134,6 +137,22 @@ Every primary method supports `start` and `stop` via explicit hidden event marke
 ```
 
 The event is only counted when a conception check occurs in the same message. If the encounter continues across several messages, the AI should repeat the scene-use marker in the check message, or you can select the method manually. `start` and `add` remain available for persistent selection (e.g. routinely relying on condoms as backup). Discarded/swiped messages no longer influence persistent changes; a one-time use is never saved as a permanent method. Neither the prompt nor the fallback can guarantee correct understanding of ambiguous roleplay narration; verify tracker changes after important events.
+
+## v3.21 — integrated consistency release
+
+- Independent heat/rut timing uses a dedicated story-date anchor and recurring day counter. It no longer borrows the menstrual cycle day. The first available RP date initializes a blank anchor; before any RP date it displays an unanchored/waiting state. Heat-only conception restrictions apply in Omegaverse, never in Normal mode.
+- Pregnancy capability, menstruation, ovulation and heat/rut remain independently configurable for Me and Bot. The old global "menstruation enabled" checkbox is hidden; saved legacy values remain compatible until an explicit per-character choice is made.
+- Parent profiles read known traits from the active SillyTavern persona description and current character card. Stored manual profile values win. Extraction is conservative: ambiguous/unlabeled facts remain unknown; no AI/API request is needed. Parent A and B remain available under Track: Me.
+- In-progress fetal records can fill missing information after parental traits become available. Known traits and born baby records are **not** regenerated. Automatic and manual births share the same baby genome model.
+- The secondary biological parent is recorded from explicit RP evidence/tags or manual entry. The extension does not assume that the current chatbot is necessarily the biological parent.
+- Birth dialogs include a labeled baby-name field and readable light-theme typography. The independent baby editor hides when no active baby exists. Birth info and each child's saved sex/species/appearance remain independent.
+- Postpartum recovery no longer assumes breastfeeding at birth. When feeding is unknown, menstrual return remains unconfirmed until explicitly established. Per-carrier feeding, estimated/custom/manual cycle-return controls are available; historical pregnancy records are retained.
+- Removing a child from active tracking deliberately retains genuine postpartum recovery. **Undo manual delivery** restores the full pre-birth snapshot (including pregnancy and cycle state), even after child tracking was cleared. Explicitly clearing postpartum is a separate action.
+- Both pregnancy-length controls use 1–999 week numeric fields and appear only for relevant tracked pregnancy-capable characters. Normal-cycle and postpartum UI no longer present stale cycle days as currently active.
+
+**Compatibility:** Chat options and pregnancy/baby data retain their existing v3.20 metadata keys. This upgrade does not intentionally delete legacy saves. Back up important chats before updating. Contraception scene detection and missed-dose handling remain simplified narrative simulations, not validated real-world risk calculations.
+
+**Limitations:** Free-form appearance parsing cannot guarantee recognition of every persona/card style; edit a missing field manually if needed. New pregnancy dating options do not rewrite existing conception dates. Automatic paternity requires explicit story evidence. A real SillyTavern installation should still be monitored for errors after upgrading, though routine manual test suites are not required.
 
 ## Install from GitHub (recommended)
 

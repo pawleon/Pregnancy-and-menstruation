@@ -4,6 +4,8 @@ import { reportError } from './diagnostics.js';
 // ═══════════════════════════════════════════
 
 import { canCarry } from './omegaverse.js';
+import { parseParentDescription, normalizeParentProfile, PROFILE_FIELDS } from './genetics.js';
+import { activeParentDescription } from './profile-source.js';
 import { cycleLength } from './cycle-model.js';
 import { extension_settings } from '../../../extensions.js';
 import { saveSettingsDebounced as saveGlobalSettingsDebounced } from '../../../../script.js';
@@ -48,6 +50,8 @@ const CHAT_OPTION_DEFAULTS = Object.freeze({
     babyGraduationBasis: 'developmental',
     pregnancyDatingMode: 'conception',
     sexUser: 'unspecified', sexChar: 'unspecified',
+    postpartumReturnModeUser: 'estimated', postpartumReturnModeChar: 'estimated',
+    postpartumReturnDaysUser: 90, postpartumReturnDaysChar: 90,
     _birthBlockedUntilUser: null,
     _birthBlockedUntilChar: null,
     _conceptionBlockedUntilUser: null,
@@ -77,6 +81,8 @@ function normalizeChatOption(key, value) {
     if (/^heatFertility(User|Char)$/.test(key)) return ['none','boost','required'].includes(value) ? value : 'none';
     if (key === 'babyGraduationBasis') return ['chronological','developmental'].includes(value) ? value : 'developmental';
     if (key === 'sexUser' || key === 'sexChar') return ['female','male','other','unspecified'].includes(value) ? value : 'unspecified';
+    if (/^postpartumReturnMode(User|Char)$/.test(key))return ['estimated','custom','manual'].includes(value)?value:'estimated';
+    if (/^postpartumReturnDays(User|Char)$/.test(key))return Number.isInteger(value)&&value>=1&&value<=3650?value:90;
     if (key === 'pregnancyDatingMode') return ['conception','obstetric'].includes(value) ? value : 'conception';
     if (key === 'babyDevelopmentRate') {
         const v = Number(value);
@@ -328,7 +334,13 @@ const PARENT_PROFILES_KEY = 'reproductiveSystem_parentProfiles_v1';
 export function getParentProfile(who='user') {
     const context=contraceptionChatContext();
     const raw=context?.chatMetadata?.[PARENT_PROFILES_KEY]?.[who==='char'?'char':'user'];
-    return raw && typeof raw==='object' && !Array.isArray(raw) ? structuredClone(raw) : {};
+    // Explicit manually edited fields win; parse only missing traits from the live
+    // persona or character description. Never mutate the character card.
+    const manual=raw && typeof raw==='object' && !Array.isArray(raw) ? normalizeParentProfile(raw) : {};
+    const inferred=parseParentDescription(activeParentDescription(who));
+    const combined={};
+    for(const field of PROFILE_FIELDS)combined[field]=manual[field] || inferred[field] || '';
+    return combined;
 }
 export function setParentProfile(who, profile) {
     const context=contraceptionChatContext();

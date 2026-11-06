@@ -26,6 +26,19 @@ export function parseParentDescription(description, seed={}) {
             const match=trimmed.match(re);if(match)profile[field]=safe(match[1],LIMITS[field]);
         }
     }
+    // Conservative English prose detection. Unknown details remain unknown.
+    const text=String(description||'').slice(0,16000);
+    const sentence=text.replace(/\s+/g,' ');
+    const patterns={
+        hair:[/\b(?:has|with|wears)\s+([\w -]{2,65}?)\s+hair\b/i, /\bhair\s+(?:is|was|of)\s+([\w -]{2,55})(?=[,.]|$)/i],
+        eyes:[/\b(?:has|with)\s+([\w -]{2,55}?)\s+eyes\b/i, /\beyes\s+(?:are|were|of)\s+([\w -]{2,55})(?=[,.]|$)/i],
+        skin:[/\b(?:has|with)\s+([\w -]{2,70}?)\s+skin\b/i, /\bskin\s+(?:is|was)\s+([\w -]{2,70})(?=[,.]|$)/i],
+        height:[/\b(?:height|stands at|is)\s+(\d{2,3})\s*cm\b/i],
+    };
+    for(const [field,list] of Object.entries(patterns)){
+        if(profile[field])continue;
+        for(const re of list){const match=sentence.match(re);if(match){profile[field]=safe(match[1],LIMITS[field]);break;}}
+    }
     return profile;
 }
 const parts = (value) => String(value||'').split(/[,;\n]/g).map(x=>x.trim()).filter(Boolean);

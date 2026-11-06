@@ -203,7 +203,8 @@ export function showBirthDialog(babies, onConfirm) {
             <label style="display:block;font-size:11px;margin:5px 0">Species / hybrid
               <input type="text" class="rb-species-edit text_pole" data-idx="${i}" maxlength="150" value="${escapeHtml(baby.species||'Unknown')}">
             </label>
-            <input type="text" class="rb-name-input" data-idx="${i}"
+            <label class="rb-name-label" for="rb-baby-name-${i}">Baby name</label>
+            <input type="text" id="rb-baby-name-${i}" class="rb-name-input" data-idx="${i}"
                    placeholder="Enter name…" autocomplete="off"
                    value="${escapeHtml(baby.name || '')}">
             <div class="rb-traits">

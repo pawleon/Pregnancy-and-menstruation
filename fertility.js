@@ -52,23 +52,25 @@ export function fertileWindow(cycleDay, cycleLength = 28, bleeding = 5) {
 
 // Internal implementation note.
 // Internal implementation note.
-export function postpartumState(daysSinceBirth, lactating = true) {
+export function postpartumState(daysSinceBirth, lactating = null, returnDays = null) {
     const d = Math.max(0, parseInt(daysSinceBirth) || 0);
     const healing = d < 42
         ? (d < 10 ? 'stitches are fresh and painful' : d < 25 ? 'healing' : 'almost healed')
         : null;
     // Internal implementation note.
-    const cycleReturned = lactating ? d >= 180 : d >= 45;
+    // Unknown feeding status must not be silently treated as breastfeeding.
+    const estimatedReturn = returnDays === null ? (lactating === true ? 180 : lactating === false ? 45 : null) : returnDays;
+    const cycleReturned = Number.isFinite(estimatedReturn) ? d >= estimatedReturn : false;
     const lochia = d < 35;
     return {
         days: d,
         healing,
-        lactating: lactating && d < 730,
+        lactating: lactating === true && d < 730,
         cycleReturned,
         lochia,
         // Internal implementation note.
-        fertilityMul: cycleReturned ? 1 : (lactating ? 0.05 : 0.3),
-        label: d < 42 ? 'Early postpartum period' : cycleReturned ? 'Recovery complete' : 'Lactating, cycle has not returned',
+        fertilityMul: cycleReturned ? 1 : (lactating === true ? 0.05 : lactating === false ? 0.3 : 0.5),
+        label: d < 42 ? 'Early postpartum period' : cycleReturned ? 'Cycle resumed' : 'Cycle return not confirmed',
     };
 }
 

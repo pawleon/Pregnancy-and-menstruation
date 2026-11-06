@@ -15,12 +15,10 @@ export function canCarry(s, who) {
     return m === 'both' || m === who;
 }
 export function hasMenstrualCycle(s, who) {
-    // The legacy per-chat checkbox remains a master off switch. It must not
-    // silently be bypassed by a carrier-specific override from the new UI.
-    if (s?.menstruationEnabled === false) return false;
     const choice = s?.['bleed'+suffix(who)];
     if (typeof choice === 'boolean') return choice;
-    return canCarry(s,who);
+    // Old saves without separate settings still honor the legacy checkbox.
+    return s?.menstruationEnabled !== false && canCarry(s,who);
 }
 export function hasOvulation(s,who) {
     const choice=s?.['ovulate'+suffix(who)];
@@ -48,8 +46,13 @@ export function heatDay(s, who, day, rpDate='') {
         const n=cycleLength(s,who), {start,end}=fertileDays(n,bleedingDays(s,who));
         return { day, length:n, active:day>=start && day<=end, start,end, type: designationOf(s,who)==='alpha'?'rut':'heat' };
     }
-    const anchorMs=Date.parse(cfg.anchor+'T00:00:00Z'), rpMs=Date.parse(String(rpDate||'').slice(0,10)+'T00:00:00Z');
-    const elapsed=Number.isFinite(anchorMs) && Number.isFinite(rpMs) ? Math.floor((rpMs-anchorMs)/86400000) : (day-1);
+    // An independent heat must NEVER borrow the menstrual day. Until RP time
+    // and a valid anchor exist, report an unanchored cycle instead of fake heat.
+    const anchorMs=cfg.anchor ? Date.parse(cfg.anchor+'T00:00:00Z') : NaN;
+    const rpMs=rpDate ? Date.parse(String(rpDate).slice(0,10)+'T00:00:00Z') : NaN;
+    if (!Number.isFinite(anchorMs) || !Number.isFinite(rpMs))
+        return {day:null,length:cfg.frequency,active:false,unanchored:true,start:1,end:Math.min(cfg.duration,cfg.frequency),type:designationOf(s,who)==='alpha'?'rut':'heat'};
+    const elapsed=Math.floor((rpMs-anchorMs)/86400000);
     const dayInCycle=((elapsed % cfg.frequency)+cfg.frequency)%cfg.frequency+1;
     return { day:dayInCycle,length:cfg.frequency,active:dayInCycle<=Math.min(cfg.duration,cfg.frequency),
         start:1,end:Math.min(cfg.duration,cfg.frequency),type:designationOf(s,who)==='alpha'?'rut':'heat' };
@@ -62,7 +65,7 @@ export function cyclePhase(s, who, day, lang='en', rpDate='') {
     const cycle = hasMenstrualCycle(s,who) || hasOvulation(s,who);
     const info = getPhaseInfo(day,lang,false,hasMenstrualCycle(s,who),cycleLength(s,who),bleedingDays(s,who));
     const h=heatDay(s,who,day,rpDate);
-    if (h?.active) return {...info,name: h.type==='rut'?'Rut':'Heat', color:'#ff6b6b'};
+    if (h?.active) return {...info,name: h.type==='rut'?'Rut':'Heat', heatCycleDay:h.day, heatCycleLength:h.length, heatDuration:h.end, color:'#ff6b6b'};
     if (cycle) return info;
     return {...info,name:h ? (h.type==='rut'?'Outside rut':'Between heats') : 'Status',color:'#a88ae3'};
 }

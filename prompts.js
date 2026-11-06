@@ -226,6 +226,7 @@ export function getBasePrompt() {
     const status = statusTemplate(s, p);
     b += `End with exactly one hidden status tag. Values: ${langName}, short, current-scene only; omit unknown fields.\n`;
     b += "RP_STATUS ownership is strict: user = {{user}} only; partner = {{char}} only. Never put {{char}}'s libido, mood, physical state, symptoms, pregnancy state, or sexual state inside user. Never put {{user}}'s state inside partner.\n";
+    b += 'When a pregnancy is confirmed and the biological second parent is EXPLICITLY known from the current scene, include father_name with that verified name in the correct RP_STATUS user/partner object, or in PREGNANCY_STATE.father_name. If unknown, omit father_name. Never assume {{char}} is necessarily the biological parent; donors and prior partners are possible.\n';
     b += `<!-- [RP_STATUS:${JSON.stringify(status)}] -->\n`;
     b += line + '\n';
     if (p.hasBaby) {

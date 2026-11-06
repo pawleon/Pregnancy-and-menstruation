@@ -5,11 +5,16 @@ function cycleSummary(who, c, s) {
     if (!hasCycle(s, who) && !c.isPregnant) return isOmegaverse(s) ? roleLabel(s, who) : 'Status';
     if (c.isPregnant && pregnancyIsKnown(c, s)) return `Pregnancy — ${displayPregnancyWeeks(c,s)} weeks`;
     const pp = getPostpartum(c, getPregnancyData());
-    if (pp && !pp.cycleReturned) return 'Postpartum · cycle has not returned';
+    if (pp && !pp.cycleReturned) return 'Cycle paused — postpartum';
     const day = (who === 'char' ? (c.cycleDay || 1) : getCycleDay()) + (c.isPregnant ? daysSinceConception(c, getPregnancyData()) : 0);
     const length = cycleLength(s, who);
     if (day > length) return `Delay ${day - length} days`;
     if (c.isPregnant) return `Day ${day}/${length} · scene-based status`;
+    const h=heatDay(s,who,day,getPregnancyData().rpDate);
+    if (h && heatSettings(s,who).mode==='independent'){
+        const phase=h.unanchored?'Heat/rut waiting for RP date':`${h.type==='rut'?'Rut':'Heat'} ${h.day}/${h.length}${h.active?` (active ${h.day}/${h.end})`:' (between)'}`;
+        return (hasMenstrualCycle(s,who)||hasOvulation(s,who))?`Cycle ${day}/${length} · ${phase}`:phase;
+    }
     return `Day ${day}/${length} · ${getPhaseInfo(day, 'en', who).name}`;
 }
 function getPhaseInfo(day, lang = 'en', who = 'user') {
@@ -29,7 +34,7 @@ import { HYGIENE, getFlow, getHygieneState, getPhaseEffects, hoursBetween } from
 import { getPhaseInfo as phaseInfo, calculateWeeksFromDates, getSymptomsForProgress, getRecommendationsForProgress, formatSexIcons, formatFetusCount, getHealthInfo, detectChatLanguage, translateStatusValue } from './helpers.js';
 import { babyAgeDays, getCareNeeds, getGrowthStage, MILESTONE_ICONS, milestonesTotal } from './baby-care.js';
 import { calculateDueDate } from './date-parser.js';
-import { conceptionTerm, displayPregnancyWeeks, pregnancyDatingMode, resetPregnancy, resetBaby, visitDoctor, applyScanResult, startManualPregnancy, startManualBaby, startPartnerPregnancy, resetPartnerPregnancy, takePregnancyTest, revealPregnancy, getPostpartum, pregnancyIsKnown, daysSinceConception, setLactating, setTrying, monthsTrying, createUndoCheckpoint, undoLastDestructiveChange, editBabyDetails, setFetusSexes } from './pregnancy.js';
+import { conceptionTerm, displayPregnancyWeeks, pregnancyDatingMode, resetPregnancy, resetBaby, undoManualDelivery, clearPostpartum, setPostpartumFeeding, resumePostpartumCycle, visitDoctor, applyScanResult, startManualPregnancy, startManualBaby, startPartnerPregnancy, resetPartnerPregnancy, takePregnancyTest, revealPregnancy, getPostpartum, pregnancyIsKnown, daysSinceConception, setLactating, setTrying, monthsTrying, createUndoCheckpoint, undoLastDestructiveChange, editBabyDetails, setFetusSexes } from './pregnancy.js';
 import { normalizeParentProfile, parseParentDescription, PROFILE_FIELDS } from './genetics.js';
 import { updatePromptInjection } from './prompts.js';
 import { recordManualContraception, getLastContraceptionEvent } from './contraception-events.js';
@@ -632,6 +637,7 @@ function cycleCardHtml(who, c, tr) {
     if (hormonal) { cd.fertility = 'Suppressed / uncertain'; cd.note = hormoneCycleHint(method, methodStatus); }
     const delay = missedDays(rawDay, len);
     const pp = getPostpartum(c, p0);
+    if(pp && !pp.cycleReturned)cd.note='Cycle paused during postpartum recovery; last cycle day is not current.';
     const win = carries && s.tryingToConceive && !hormonal ? fertileWindow(day, len) : null;
     const testRes = c.lastTestResult;
 
@@ -670,11 +676,14 @@ function cycleCardHtml(who, c, tr) {
         if (!pp.cycleReturned) extraRows += stat('fa-clock-rotate-left', 'purple', 'Cycle', 'Not returned');
     }
 
-    const badge = !cycling ? (role || 'Scene-based') : pp && !pp.cycleReturned
-        ? `Postpartum · ${pp.days} days`
-        : delay > 0
-            ? `Delay ${delay} days`
-            : `Day ${day}/${len} · ${phase.name}`;
+    const heatInfo=heatDay(s,who,day,getPregnancyData().rpDate);
+    const separateHeat=heatInfo && heatSettings(s,who).mode==='independent';
+    const heatBadge=separateHeat ? (heatInfo.unanchored?'Heat/rut: RP date needed':`${heatInfo.type==='rut'?'Rut':'Heat'} ${heatInfo.day}/${heatInfo.length}${heatInfo.active?' active':''}`):'';
+    const badge = pp && !pp.cycleReturned ? `Cycle paused · postpartum ${pp.days}d`
+        : separateHeat ? ((hasMenstrualCycle(s,who)||hasOvulation(s,who))?`Cycle ${day}/${len} · ${heatBadge}`:heatBadge)
+        : !cycling ? (role || 'Scene-based')
+        : delay > 0 ? `Delay ${delay} days`
+        : `Day ${day}/${len} · ${phase.name}`;
 
     return `<details class="repro">
         <summary><div class="repro-header">
@@ -1264,6 +1273,8 @@ export function syncUI() {
         if (bleedingInput) { bleedingInput.value = bleedingDays(s,who); bleedingInput.disabled = !canSetChatOptions(); }
         const block=el(`repro-biology-${who}`) || document.querySelector(`.repro-biology-${who}`);
         if(block)block.style.display=isTracked(who)?'':'none';
+        const title=el(`repro-biology-title-${who}`);
+        if(title)title.textContent=`${who==='user'?'Me':'Bot'} (${carrierName(who)})`;
         const cycBlock=document.querySelector(`.repro-cycle-config-${who}`);
         if(cycBlock)cycBlock.style.display=(hasMenstrualCycle(s,who)||hasOvulation(s,who))?'grid':'none';
         for(const [cap,key,value] of [['carry','carry',canCarry(s,who)],['bleed','bleed',hasMenstrualCycle(s,who)],['ovulate','ovulate',hasOvulation(s,who)]]){
@@ -1282,9 +1293,20 @@ export function syncUI() {
         }
         const independent=document.querySelector(`.repro-heat-independent-${who}`);
         if(independent)independent.style.display=h.mode==='independent'?'grid':'none';
+        const ppCarrier=who==='char'?getPartnerData():p;
+        const ppConfig=document.querySelector(`.repro-postpartum-config-${who}`);
+        if(ppConfig)ppConfig.style.display=ppCarrier.postpartum?'':'none';
+        const ppFeeding=el(`repro-postpartum-feeding-${who}`);
+        if(ppFeeding)ppFeeding.value=ppCarrier.postpartum?.feeding || (ppCarrier.postpartum?.lactating===true?'breastfeeding':ppCarrier.postpartum?.lactating===false?'formula':'unknown');
+        const ppMode=el(`repro-postpartum-mode-${who}`);
+        if(ppMode)ppMode.value=s[who==='char'?'postpartumReturnModeChar':'postpartumReturnModeUser']||'estimated';
+        const ppDays=el(`repro-postpartum-days-${who}`);
+        if(ppDays){ppDays.value=s[who==='char'?'postpartumReturnDaysChar':'postpartumReturnDaysUser']||90;ppDays.disabled=ppMode?.value!=='custom';}
         const profile=getParentProfile(who);
         const parentBlock=document.querySelector(`.repro-parent-${who}`);
-        if(parentBlock)parentBlock.style.display=isTracked(who)?'':'none';
+        if(parentBlock)parentBlock.style.display='';
+        const parentHeading=el(`repro-parent-heading-${who}`);
+        if(parentHeading)parentHeading.textContent=`${who==='user'?'Parent A':'Parent B'} · ${carrierName(who)}`;
         for(const field of PROFILE_FIELDS){const ctrl=el(`repro-parent-${who}-${field}`);if(ctrl && document.activeElement!==ctrl)ctrl.value=profile[field]||'';}
         const fetusBox=document.querySelector(`.repro-fetus-edit-${who}`);
         const carrier=who==='char'?getPartnerData():p;
@@ -1301,6 +1323,8 @@ export function syncUI() {
     const babySelect=el('repro-baby-genetics-select');
     if(babySelect){
        const babies=p.babies||[];
+       const fieldsContainer=el('repro-baby-edit-fields');
+       if(fieldsContainer)fieldsContainer.style.display=babies.length?'':'none';
        const selected=Number(babySelect.value);
        const previous=babySelect.value;
        babySelect.innerHTML=babies.map((b,i)=>`<option value="${i}">${escapeLabel(b.name||'Baby '+(i+1))} (${escapeLabel(b.species||'Unknown')})</option>`).join('')||'<option value="">No babies in this chat</option>';
@@ -1315,7 +1339,11 @@ export function syncUI() {
     const babyRate = el('repro-baby-rate');
     if (babyRate) { babyRate.value = developmentRate(s); babyRate.disabled = !canSetChatOptions(); }
     const menstruationToggle = el('repro-menstruation-enabled');
-    if (menstruationToggle) menstruationToggle.checked = s.menstruationEnabled !== false;
+    if (menstruationToggle) {
+        menstruationToggle.checked = s.menstruationEnabled !== false;
+        const row=menstruationToggle.closest('label')||menstruationToggle.parentElement;
+        if(row)row.style.display='none';
+    }
     const trackSel = el('repro-trackfor');
     if (trackSel) trackSel.value = s.trackFor || 'user';
     const carrierSel = el('repro-carrier-mode');
@@ -1325,9 +1353,9 @@ export function syncUI() {
     const cycInfo = el('repro-currentcycle');
     const cycRow = el('repro-cycle-row');
     if (cycInfo) cycInfo.style.display = isTracked('user') ? '' : 'none';
-    if (cycRow) cycRow.style.display = isTracked('user') && hasCycle(s, 'user') ? 'flex' : 'none';
+    if (cycRow) cycRow.style.display = isTracked('user') && hasCycle(s, 'user') && !p.isPregnant && !(getPostpartum(p,p)&&!getPostpartum(p,p).cycleReturned) ? 'flex' : 'none';
     const partnerRow = el('repro-partner-cycle-row');
-    if (partnerRow) partnerRow.style.display = isTracked('char') && hasCycle(s, 'char') ? '' : 'none';
+    if (partnerRow) partnerRow.style.display = isTracked('char') && hasCycle(s, 'char') && !getPartnerData().isPregnant && !(getPostpartum(getPartnerData(),p)&&!getPostpartum(getPartnerData(),p).cycleReturned) ? '' : 'none';
     const partnerDay = getPartnerData().cycleDay || 1;
     const partnerInput = el('repro-partner-cycle-day');
     if (partnerInput) { partnerInput.value = partnerDay; partnerInput.max = cycleLength(s, 'char'); }
@@ -1345,18 +1373,11 @@ export function syncUI() {
     }
 
     const durSel = el('repro-duration');
-    const durCust = el('repro-duration-custom');
-    if (durSel) {
-        const dur = pregnancyLength(s, 'user');
-        const std = ['12','16','20','24','28','32','36','40'];
-        if (std.includes(String(dur))) {
-            durSel.value = String(dur);
-            if (durCust) durCust.style.display = 'none';
-        } else {
-            durSel.value = 'custom';
-            if (durCust) { durCust.style.display = 'inline-block'; durCust.value = dur; }
-        }
-    }
+    if (durSel)durSel.value=pregnancyLength(s,'user');
+    const userDurationRow=el('repro-duration-user-row');
+    if(userDurationRow)userDurationRow.style.display=isTracked('user')&&canCarry(s,'user')?'flex':'none';
+    const charDurationRow=el('repro-duration-char-row');
+    if(charDurationRow)charDurationRow.style.display=isTracked('char')&&canCarry(s,'char')?'flex':'none';
 
     const cycleIn = el('repro-cycleday');
     const cycleInfo = el('repro-currentcycle');
@@ -1550,6 +1571,8 @@ export function syncUI() {
     // ── Baby monitor ──
     const babyMon = el('repro-baby-mon');
     const resetBabyBtn = el('repro-reset-baby');
+    const undoManualBtn=el('repro-undo-manual-delivery');
+    if(undoManualBtn)undoManualBtn.style.display=p._manualDeliveryBackup?'block':'none';
     if (babyMon) {
         if (p.hasBaby) {
             babyMon.style.display = 'block';
@@ -1633,7 +1656,7 @@ export function setupUI() {
             <small style="opacity:.7;font-size:9px">Sex, designation, pregnancy capability, ovulation, menstruation and heat/rut are separate. These settings are independent for Me and Bot.</small>
             ${['user','char'].map(who=>`
               <details class="repro-biology-${who}" ${who==='user'?'open':''} style="border:1px solid rgba(160,160,160,.25);border-radius:8px;padding:6px;margin:6px 0">
-                <summary style="cursor:pointer;font-size:11px"><b>${who==='user'?'Me ({{user}})':'Bot ({{char}})'}</b></summary>
+                <summary style="cursor:pointer;font-size:11px"><b id="repro-biology-title-${who}">${who==='user'?'Me':'Bot'}</b></summary>
                 <label style="display:block;font-size:10px;margin-top:5px">Biological sex (informational)
                   <select id="repro-sex-${who}" class="text_pole" style="width:100%">
                     <option value="unspecified">Unspecified</option><option value="female">Female</option><option value="male">Male</option><option value="other">Other / fantasy</option>
@@ -1657,13 +1680,31 @@ export function setupUI() {
                   <div class="repro-heat-independent-${who}" style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:4px">
                     <label style="font-size:9px">Every (days)<input id="repro-heat-frequency-${who}" type="number" class="text_pole" min="1" max="365" style="width:100%"></label>
                     <label style="font-size:9px">Duration (days)<input id="repro-heat-duration-${who}" type="number" class="text_pole" min="1" max="365" style="width:100%"></label>
-                    <label style="font-size:9px;grid-column:1 / -1">Cycle anchor in RP time<input id="repro-heat-anchor-${who}" type="date" class="text_pole" style="width:100%"></label>
+                    <label style="font-size:9px;grid-column:1 / -1">Independent heat/rut anchor (auto-set at first RP date)<input id="repro-heat-anchor-${who}" type="date" class="text_pole" style="width:100%"></label>
                   </div>
                   <label style="display:block;font-size:9px;margin-top:4px">Effect on fertility
                     <select id="repro-heat-fertility-${who}" class="text_pole" style="width:100%">
                       <option value="none">No change</option><option value="boost">Higher fertility during heat</option><option value="required">Conception only during heat</option>
                     </select>
                   </label>
+                </div>
+                <div class="repro-postpartum-config-${who}" style="border-top:1px solid rgba(160,160,160,.2);margin-top:8px;padding-top:8px">
+                  <b style="font-size:10px">Postpartum recovery</b>
+                  <label style="font-size:10px;display:block">Feeding status
+                    <select id="repro-postpartum-feeding-${who}" class="text_pole" style="width:100%">
+                      <option value="unknown">Not established</option><option value="breastfeeding">Breastfeeding</option><option value="mixed">Mixed feeding</option><option value="formula">Formula / not breastfeeding</option>
+                    </select>
+                  </label>
+                  <label style="font-size:10px;display:block">Cycle return mode
+                    <select id="repro-postpartum-mode-${who}" class="text_pole" style="width:100%">
+                      <option value="estimated">Estimated from feeding</option><option value="custom">Custom days after birth</option><option value="manual">Story event / manual only</option>
+                    </select>
+                  </label>
+                  <label style="font-size:10px;display:block">Custom days to cycle return
+                    <input type="number" min="1" max="3650" id="repro-postpartum-days-${who}" class="text_pole" style="width:100%">
+                  </label>
+                  <button type="button" class="menu_button" id="repro-postpartum-resume-${who}" style="width:100%">Cycle has returned</button>
+                  <button type="button" class="menu_button" id="repro-postpartum-clear-${who}" style="width:100%">Clear postpartum recovery (explicit reset)</button>
                 </div>
               </details>`).join('')}
             <small style="opacity:.6;font-size:9px">Fertility is an illustrative RP simulation, not a real-world medical predictor. Existing chats retain their previous capability defaults until you change them.</small>
@@ -1682,9 +1723,9 @@ export function setupUI() {
             </label>
             <details style="border:1px solid rgba(155,155,155,.25);padding:7px;border-radius:8px;margin:6px 0">
               <summary style="cursor:pointer;font-size:11px"><b>Parent profiles & fantasy baby genetics</b></summary>
-              <small style="opacity:.7;font-size:9px">Any species, no presets. Edit the two parents for this chat; empty traits stay unknown. When a baby is born, its generated traits are saved.</small>
+              <small style="opacity:.7;font-size:9px">Both parents are available regardless of Track mode. Known traits are read from the active persona and current character card; manual edits take priority. Unrecognized traits remain unknown. Born children keep their saved traits.</small>
               ${['user','char'].map(who=>`<div class="repro-parent-${who}" style="padding:4px 0">
-                <b style="font-size:10px">${who==='user'?'Me / parent A':'Bot / parent B'}</b>
+                <b id="repro-parent-heading-${who}" style="font-size:10px">${who==='user'?'Parent A':'Parent B'}</b>
                 ${[['species','Species'],['hair','Hair'],['eyes','Eyes'],['skin','Skin / undertone'],['face','Facial traits'],['height','Adult height (cm)'],['traits','Supernatural traits'],['abilities','Abilities']].map(([field,label])=>`
                   <label style="display:block;font-size:9px;margin:3px 0">${label}<input class="text_pole" style="width:100%" id="repro-parent-${who}-${field}" maxlength="350" placeholder="Optional"></label>`).join('')}
                 <label style="display:block;font-size:9px">Paste labeled character-card details (optional)
@@ -1703,6 +1744,7 @@ export function setupUI() {
               <label style="font-size:10px">Existing baby
                 <select id="repro-baby-genetics-select" class="text_pole" style="width:100%"></select>
               </label>
+              <div id="repro-baby-edit-fields">
               <label style="font-size:10px">Sex<select id="repro-baby-edit-sex" class="text_pole" style="width:100%"><option value="?">Unknown</option><option value="M">Boy</option><option value="F">Girl</option></select></label>
               <label style="font-size:10px">Baby's individual development multiplier<input type="number" min="0.25" max="10" step="0.25" id="repro-baby-edit-developmentRate" class="text_pole" style="width:100%"></label>
               <label style="font-size:10px">Species / hybrid<input id="repro-baby-edit-species" class="text_pole" maxlength="150" style="width:100%"></label>
@@ -1714,6 +1756,7 @@ export function setupUI() {
               <label style="font-size:10px">Inherited traits (comma-separated)<input id="repro-baby-edit-traits" class="text_pole" style="width:100%"></label>
               <label style="font-size:10px">Abilities (comma-separated)<input id="repro-baby-edit-abilities" class="text_pole" style="width:100%"></label>
               <button id="repro-baby-genetics-save" class="menu_button" style="width:100%">Save baby's established traits</button>
+              </div>
             </details>
             <div style="font-size:10px;opacity:.65;margin-top:4px">Story settings (including contraception, pregnancy length, carrier, universe, and cycles) are saved per chat. Confirmed RP changes can update contraception automatically.</div>
             <div id="repro-contraception-last" style="font-size:10px;opacity:.8;margin:3px 0"></div>
@@ -1841,19 +1884,13 @@ export function setupUI() {
                 </div>
                 <div style="opacity:.65;font-size:10px">These controls also respond to confirmed RP events. Dates use story time; review AI-detected changes. Do not combine internal and external condoms.</div>
             </div>
-            <div style="display:flex;gap:4px;align-items:center">
-                <span style="font-size:9px;opacity:0.5">Pregnancy length:</span>
-                <select id="repro-duration" class="text_pole" style="flex:1">
-                    <option value="12">12 weeks</option><option value="16">16</option>
-                    <option value="20">20</option><option value="24">24</option>
-                    <option value="28">28</option><option value="32">32</option>
-                    <option value="36">36</option><option value="40" selected>40 (default)</option>
-                    <option value="custom">Custom</option>
-                </select>
-                <input type="number" id="repro-duration-custom" class="text_pole" style="width:60px;display:none" min="1" max="999">
+            <div id="repro-duration-user-row" style="display:flex;gap:4px;align-items:center">
+                <label for="repro-duration" style="font-size:10px">My pregnancy length:</label>
+                <input type="number" id="repro-duration" class="text_pole" min="1" max="999" style="flex:1;min-width:0">
+                <span style="font-size:10px">weeks</span>
             </div>
-            <div style="display:flex;gap:4px;align-items:center;margin:4px 0">
-                <label style="font-size:10px" for="repro-duration-char">Bot pregnancy length:</label>
+            <div id="repro-duration-char-row" style="display:flex;gap:4px;align-items:center;margin:4px 0">
+                <label style="font-size:10px" for="repro-duration-char">Character pregnancy length:</label>
                 <input type="number" id="repro-duration-char" class="text_pole" style="flex:1;min-width:0" min="1" max="999">
                 <span style="font-size:10px">weeks</span>
             </div>
@@ -1947,7 +1984,8 @@ export function setupUI() {
                 <input type="text" id="repro-mb-appearance" class="text_pole" maxlength="200" placeholder="Appearance: mother's eyes, dark hair (comma-separated)" title="Appearance traits, comma-separated — added to the infoblock and model prompt">
                 <button id="repro-manual-baby-add" class="menu_button" style="width:100%">Add baby</button>
                 <button id="repro-reset" class="menu_button redWarningBG" style="width:100%;display:none">Reset preg.</button>
-                <button id="repro-reset-baby" class="menu_button redWarningBG" style="width:100%;display:none">Reset baby</button>
+                <button id="repro-reset-baby" class="menu_button redWarningBG" style="width:100%;display:none">Remove baby from tracking (keep postpartum)</button>
+                <button id="repro-undo-manual-delivery" class="menu_button" style="width:100%;display:none">Undo manual delivery / restore pre-birth state</button>
                 <button id="repro-undo" class="menu_button" style="width:100%">↶ Undo last reset/deletion</button>
             </div>
             <hr>
@@ -2085,6 +2123,11 @@ export function setupUI() {
                     refreshAll();
                 });
             }
+            $(`#repro-postpartum-feeding-${who}`).on('change',function(){setPostpartumFeeding(who,this.value);refreshAll();});
+            $(`#repro-postpartum-mode-${who}`).on('change',function(){getSettings()['postpartumReturnMode'+suf]=this.value;refreshAll();});
+            $(`#repro-postpartum-days-${who}`).on('change',function(){getSettings()['postpartumReturnDays'+suf]=Math.max(1,Math.min(3650,parseInt(this.value,10)||90));refreshAll();});
+            $(`#repro-postpartum-resume-${who}`).on('click',()=>{if(resumePostpartumCycle(who))refreshAll();});
+            $(`#repro-postpartum-clear-${who}`).on('click',()=>{if(confirm('Clear this character’s postpartum recovery without deleting baby or birth history?')){clearPostpartum(who);refreshAll();}});
             const saveProfile=()=>{
                 const profile={};
                 for(const field of PROFILE_FIELDS)profile[field]=String($(`#repro-parent-${who}-${field}`).val()||'');
@@ -2214,13 +2257,8 @@ export function setupUI() {
             refreshAll();
         });
         $('#repro-duration').on('change', function() {
-            const v = $(this).val();
-            if (v === 'custom') { $('#repro-duration-custom').show().focus(); }
-            else { $('#repro-duration-custom').hide(); getSettings().pregnancyDuration = parseInt(v, 10); updatePromptInjection(); syncUI(); }
-        });
-        $('#repro-duration-custom').on('change', function() {
-            const v = Math.max(1, Math.min(999, parseInt($(this).val(), 10) || 40));
-            $(this).val(v); getSettings().pregnancyDuration = v; updatePromptInjection(); syncUI();
+            const value=Math.max(1,Math.min(999,parseInt(this.value,10)||40));
+            this.value=value;getSettings().pregnancyDuration=value;refreshAll();
         });
 
         // Internal implementation note.
@@ -2258,7 +2296,8 @@ export function setupUI() {
         });
 
         $('#repro-reset').on('click', function() { if (confirm('Reset pregnancy?')) { resetPregnancy(); showNotification('Reset', 'info'); } });
-        $('#repro-reset-baby').on('click', function() { if (confirm('Reset baby?')) { resetBaby(); showNotification('Reset', 'info'); } });
+        $('#repro-reset-baby').on('click', function() { if (confirm('Remove active baby tracking? Postpartum and birth history will remain.')) { resetBaby(); showNotification('Baby tracking removed; recovery preserved', 'info'); } });
+        $('#repro-undo-manual-delivery').on('click',function(){if(confirm('Undo the last manual delivery and restore the pregnancy and postpartum state from before it?')){if(undoManualDelivery())showNotification('Manual delivery undone', 'info');else showNotification('No manual-delivery backup', 'warning');}});
         $('#repro-undo').on('click', function() {
             const label = undoLastDestructiveChange();
             showNotification(label ? `Undone: ${label}` : 'Nothing to undo', label ? 'success' : 'info');

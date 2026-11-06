@@ -1149,6 +1149,10 @@ export function processDateTag(text) {
 
     p._lastRpDateTag = newIso;
     p.rpDate = newIso;
+    for(const who of ['user','char']) {
+        const suf=who==='char'?'Char':'User';
+        if(s['heatMode'+suf]==='independent' && !s['heatAnchor'+suf])s['heatAnchor'+suf]=newIso.slice(0,10);
+    }
 
     // ── Anchor pregnancy to RP timeline ──
     // If conception was set manually (or before any RP_DATE was seen), conceptionDate is

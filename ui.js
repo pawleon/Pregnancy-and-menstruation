@@ -27,7 +27,7 @@ function getPhaseInfo(day, lang = 'en', who = 'user') {
 }
 // UI v5 — compact, minimal icons, visual infoblock
 import { saveSettingsDebounced } from './state.js';
-import { getSettings, getPregnancyData, getPartnerData, getCarriers, carrierName, isTracked, getCycleDay, setCycleDay, getCurrentChatId, L, getContraception, setContraception, getContraceptionDetails, setContraceptionDetails, canSetContraception, canSetChatOptions, getParentProfile, setParentProfile, syncBabyLegacyFields } from './state.js';
+import { getSettings, getPregnancyData, getPartnerData, getCarriers, carrierName, isTracked, getCycleDay, setCycleDay, getCurrentChatId, L, getContraception, setContraception, getContraceptionDetails, setContraceptionDetails, canSetContraception, canSetChatOptions, setCycleRealism, getParentProfile, setParentProfile, syncBabyLegacyFields } from './state.js';
 import { isOmegaverse, hasMenstrualCycle, hasOvulation, canCarry, hasAnyTracking, hasCycle, designationOf, roleLabel, cyclePhase, heatSettings, heatDay } from './omegaverse.js';
 import { missedDays, fertileWindow } from './fertility.js';
 import { HYGIENE, getFlow, getHygieneState, getPhaseEffects, hoursBetween } from './cycle-realism.js';
@@ -1181,6 +1181,9 @@ export function showQuickBar() {
     });
 }
 
+// Prevent repeated clicks while this chat's Cycle Realism setting is being saved.
+let cycleRealismSaving = false;
+
 // ── syncUI ──
 export function syncUI() {
     const s = getSettings();
@@ -1250,6 +1253,11 @@ export function syncUI() {
         if (control) control.disabled = !chatOptionsEnabled;
     }
     if (hiddenPreg) hiddenPreg.checked = s.hiddenPregnancy !== false;
+    const cycleRealism = el('repro-realism');
+    if (cycleRealism) {
+        cycleRealism.checked = s.realism === true;
+        cycleRealism.disabled = !chatOptionsEnabled || cycleRealismSaving;
+    }
 
     // Internal implementation note.
     const roleSettings = el('repro-role-settings');
@@ -2418,11 +2426,20 @@ export function setupUI() {
         });
 
         // Cycle realism
-        $('#repro-realism').prop('checked', !!s.realism).on('change', function() {
-            getSettings().realism = this.checked;
-            saveSettingsDebounced();
-            updatePromptInjection();
-            syncUI();
+        $('#repro-realism').on('change', async function() {
+            if (cycleRealismSaving) return;
+            const checked = this.checked;
+            cycleRealismSaving = true;
+            this.disabled = true;
+            try {
+                if (!await setCycleRealism(checked)) {
+                    showNotification('Cycle Realism could not be saved for this chat. Try again.', 'warning');
+                }
+            } finally {
+                cycleRealismSaving = false;
+                updatePromptInjection();
+                syncUI(); // Restore the saved value, even when metadata finishes loading later.
+            }
         });
 
         // Internal implementation note.

@@ -1,4 +1,5 @@
 import { reportError } from './diagnostics.js';
+import { persistCycleRealism } from './cycle-realism-setting.js';
 // ═══════════════════════════════════════════
 // Internal implementation note.
 // ═══════════════════════════════════════════
@@ -144,6 +145,13 @@ export function setChatOption(key, value) {
         return false;
     }
     return true;
+}
+
+// A confirmed save path specifically for the Cycle Realism checkbox.
+// Other per-chat preferences retain their existing storage and save behavior.
+export async function setCycleRealism(checked) {
+    return persistCycleRealism(contraceptionChatContext(), CHAT_OPTIONS_KEY, checked,
+        (error) => reportError('[Reproductive] Could not save Cycle Realism:', error));
 }
 
 // All existing business logic gets current-chat values transparently through

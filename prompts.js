@@ -172,7 +172,10 @@ export function getBasePrompt() {
 
     const universe = isOmegaverse(s) ? 'OMEGAVERSE' : 'NORMAL';
     let b = `[REPRO TRACKER] ${universe}. Tracked=${active.join(',') || 'none'}; carriers=${active.filter(w => canCarry(s, w)).join(',') || 'none'}. State is authoritative; do not infer anatomy/carrier status.\n`;
-    if (p.rpDate) b += `RP time=${new Date(p.rpDate).toLocaleString('en-GB', { hour12: false })}; advance only by elapsed scene time.\n`;
+    b += '[RP TIME & CYCLE] The supplied RP date and cycle day are the last recorded state, not necessarily the current scene\'s final state.\n';
+    if (p.rpDate) b += `RP time=${new Date(p.rpDate).toLocaleString('en-GB', { hour12: false })}.\n`;
+    b += 'Advance RP time only by actual story events, including overnight transitions and time skips. Each elapsed calendar day advances the cycle by one, respecting its configured length and any pregnancy/postpartum pauses.\n';
+    b += 'Keep narration and RP_STATUS consistent with the scene\'s final date and cycle state. Do not repeat stale values when time has advanced; do not invent changes when it hasn\'t.\n';
     b += 'Identity: {{user}}=player, {{char}}=bot. Keep their states separate. Do not reveal private tracker facts without scene evidence.\n';
     b += active.map(w=>`${w}: sex=${s[w==='char'?'sexChar':'sexUser']||'unspecified'}, canCarry=${canCarry(s,w)}, bleeds=${hasMenstrualCycle(s,w)}, ovulates=${hasOvulation(s,w)}`).join(' | ')+'\n';
     if (isOmegaverse(s)) b += active.map(w => {
@@ -224,7 +227,7 @@ export function getBasePrompt() {
 
     const { langName, line } = langRequirement();
     const status = statusTemplate(s, p);
-    b += `End with exactly one hidden status tag. Values: ${langName}, short, current-scene only; omit unknown fields.\n`;
+    b += `Output exactly one hidden RP_STATUS tag with the following JSON schema. Values: ${langName}, short, current-scene only; omit unknown fields.\n`;
     b += "RP_STATUS ownership is strict: user = {{user}} only; partner = {{char}} only. Never put {{char}}'s libido, mood, physical state, symptoms, pregnancy state, or sexual state inside user. Never put {{user}}'s state inside partner.\n";
     b += 'When a pregnancy is confirmed and the biological second parent is EXPLICITLY known from the current scene, include father_name with that verified name in the correct RP_STATUS user/partner object, or in PREGNANCY_STATE.father_name. If unknown, omit father_name. Never assume {{char}} is necessarily the biological parent; donors and prior partners are possible.\n';
     b += `<!-- [RP_STATUS:${JSON.stringify(status)}] -->\n`;
@@ -236,7 +239,7 @@ export function getBasePrompt() {
         }
         if (developmentRate(s) !== 1) b += `Baby development speed: ${developmentRate(s)}x (fictional, chronological birth dates unchanged).\n`;
     }
-    b += 'End with current RP time: <!-- [RP_DATE:DD.MM.YYYY HH:MM] -->. Event tags belong only in the final reply and must reflect completed/current-scene events.\n';
+    b += 'End with RP_STATUS using the supplied JSON schema, followed by <!-- [RP_DATE:DD.MM.YYYY HH:MM] -->. Place both tags outside reasoning. Event tags reflect completed/current-scene events only.\n';
     return b;
 }
 

@@ -6,6 +6,7 @@ import { reportError } from './diagnostics.js';
 import { CHANCES } from './config.js';
 import { getContraception, setContraception, getContraceptionDetails, setContraceptionDetails, carrierName } from './state.js';
 import { normalizedDetails } from './contraception-rules.js';
+import { verifySpecialContraceptionEvent } from './contraception-event-guards.js';
 
 const KEY = 'reproductiveSystem_contraceptionTimeline_v1';
 const ACTIONS = new Set(['start', 'stop', 'add', 'remove_backup', 'miss_one', 'miss_multiple', 'resume_pills', 'expire_implant', 'use']);
@@ -56,6 +57,7 @@ export function parseContraceptionEvents(text, isUser = false, fallbackWho = nul
             if (!who || !ACTIONS.has(action)) continue;
             if (['start', 'stop', 'add', 'use'].includes(action) && !methodIsValid(raw.method)) continue;
             if (['add','use'].includes(action) && !SINGLE_USE_METHODS.includes(raw.method)) continue;
+            if (!verifySpecialContraceptionEvent(text, raw.method, action)) continue;
             events.push({ who, action, method: methodIsValid(raw.method) ? raw.method : null, expires: shortDate(raw.expires) });
         } catch (_) { /* reject malformed markup instead of guessing */ }
     }
@@ -94,7 +96,9 @@ export function parseContraceptionEvents(text, isUser = false, fallbackWho = nul
             // If the recipient isn't explicit, never use sender or carrier mode
             // as a guess: the narrator may describe a different character.
             if(!owner)continue;
-            const push = (action) => events.push({ who:owner, action, method, expires:'' });
+            const push = (action) => {
+                if (verifySpecialContraceptionEvent(text, method, action, line)) events.push({ who:owner, action, method, expires:'' });
+            };
             if (method === 'pill') {
                 if (/\b(?:missed|forgot|skipped)\b/i.test(line) && /\b(?:two|three|four|multiple|several|[2-9])\b/i.test(line)) push('miss_multiple');
                 else if (/\b(?:missed|forgot|skipped)\b/i.test(line) && /\b(?:one|a|single|1)\b/i.test(line)) push('miss_one');

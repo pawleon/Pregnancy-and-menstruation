@@ -239,6 +239,7 @@ export function getBasePrompt() {
         }
         if (developmentRate(s) !== 1) b += `Baby development speed: ${developmentRate(s)}x (fictional, chronological birth dates unchanged).\n`;
     }
+    b += 'For a completed menstrual hygiene change, add <!-- [HYGIENE_EVENT:{"who":"user","action":"change","type":"pad"}] --> with the correct who (user/char) and product (pad/tampon/cup/cloth/belt/sponge). For removal without replacement use action=remove,type=none. Never tag plans or unrelated actions.\n';
     b += 'End with RP_STATUS using the supplied JSON schema, followed by <!-- [RP_DATE:DD.MM.YYYY HH:MM] -->. Place both tags outside reasoning. Event tags reflect completed/current-scene events only.\n';
     return b;
 }

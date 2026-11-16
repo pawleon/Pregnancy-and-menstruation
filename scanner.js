@@ -529,7 +529,7 @@ export function messageRaw(msg) {
 
 // Internal implementation note.
 // Internal implementation note.
-export const REPRO_TAG_RE = /<!--\s*\[(?:RP_STATUS|RP_DATE|CONCEPTION_CHECK|BIRTH|MISCARRIAGE|ABORTION|SEX_REVEAL|CYCLE_DAY|PREGNANCY_STATE|BABY_TRAITS|CONTRACEPTION_EVENT)(?::CHAR)?[\s\S]*?-->/gi;
+export const REPRO_TAG_RE = /<!--\s*\[(?:RP_STATUS|RP_DATE|CONCEPTION_CHECK|BIRTH|MISCARRIAGE|ABORTION|SEX_REVEAL|CYCLE_DAY|PREGNANCY_STATE|BABY_TRAITS|CONTRACEPTION_EVENT|HYGIENE_EVENT)(?::CHAR)?[\s\S]*?-->/gi;
 
 export function hasReproTags(text) {
     REPRO_TAG_RE.lastIndex = 0;

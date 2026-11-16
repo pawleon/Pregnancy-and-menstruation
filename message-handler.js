@@ -11,7 +11,8 @@ import { getPartnerData, carrierName, isTracked } from './state.js';
 import { hasMenstrualCycle, hasOvulation, hasCycle, cyclePhase, heatDay } from './omegaverse.js';
 import { conceptionTerm, pregnancyDatingMode } from './pregnancy.js';
 import { updateBabyCare } from './baby-care.js';
-import { DISRUPTIONS, disruptionShift } from './cycle-realism.js';
+import { DISRUPTIONS, disruptionShift, HYGIENE } from './cycle-realism.js';
+import { parseHygieneEvents } from './hygiene-events.js';
 import { updatePromptInjection } from './prompts.js';
 import { syncUI, buildInfoblockHtml } from './ui.js';
 import { showNotification } from './notifications.js';
@@ -208,6 +209,19 @@ function runScan() {
     const p = getPregnancyData();
     const chatIdNow = getCurrentChatId();
     if (isRegen) restoreTurnBaseline(positionId);
+    else if (s._lastScannedPosition === positionId && p._turnBaseline?.pos === positionId &&
+        textHash !== s._lastScannedHash) {
+        // Undo the previous auto hygiene change when the latest message is edited.
+        const baseline = p._turnBaseline.state;
+        for (const who of ['user', 'char']) {
+            const prior = who === 'char' ? baseline?.partner : baseline;
+            const target = who === 'char' ? getPartnerData() : p;
+            if (prior) {
+                target.hygieneType = prior.hygieneType || 'pad';
+                target.hygieneChangedRpDate = prior.hygieneChangedRpDate || null;
+            }
+        }
+    }
     // A render/final callback for the same answer must not replace its BEFORE state.
     if (!p._turnBaseline || p._turnBaseline.pos !== positionId) {
         captureTurnBaseline(positionId);
@@ -221,6 +235,25 @@ function runScan() {
 
     // 0) RP_DATE tag: always extract date and advance time
     let dateAdvanced = processDateTag(text);
+
+    // 0.5) Completed menstrual hygiene actions, with independent RP clocks.
+    // Fields are in the existing per-chat state snapshots (swipe/delete rollback).
+    for (const event of parseHygieneEvents(text, {
+        trackFor: s.trackFor || 'user', userName: carrierName('user'), charName: carrierName('char'),
+    })) {
+        if (!isTracked(event.who) || !hasMenstrualCycle(s, event.who)) continue;
+        const target = event.who === 'char' ? getPartnerData() : p;
+        const postpartum = getPostpartum(target, p);
+        if (target.isPregnant || (postpartum && !postpartum.cycleReturned)) continue;
+        const day = event.who === 'char' ? (target.cycleDay || 1) : getCycleDay();
+        if (day > bleedingDays(s, event.who)) continue;
+        target.hygieneType = event.type;
+        target.hygieneChangedRpDate = event.type === 'none' ? null : (p.rpDate || null);
+        if (s.showNotifications) {
+            const label = HYGIENE[event.type]?.labelEn || event.type;
+            showNotification(`<i class="fa-solid fa-shield-heart"></i> ${carrierName(event.who)}: ${event.action === 'remove' ? 'removed menstrual protection' : 'changed ' + label}`, 'success');
+        }
+    }
 
     // 1) Try tag-based detection (if model added tags)
     const freshStatus = scanStatusTag(text);

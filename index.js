@@ -302,7 +302,8 @@ jQuery(async () => {
                      msg.mes.includes('[RP_DATE:') ||
                      msg.mes.includes('[PREGNANCY_STATE:') ||
                      msg.mes.includes('[BABY_TRAITS:') ||
-                     msg.mes.includes('[CONTRACEPTION_EVENT:'))
+                     msg.mes.includes('[CONTRACEPTION_EVENT:') ||
+                     msg.mes.includes('[HYGIENE_EVENT:'))
                 ) {
                     // In debug mode, keep tags visible in chat for troubleshooting
                     const s = getSettings();
@@ -332,6 +333,15 @@ jQuery(async () => {
                 try { onMessageReceived(messageIndex, 'final'); } catch (e) { reportError('[Reproductive] handled exception:', e); }
                 // 2) Then strip tags and render the infoblock
                 processFinalMessage(messageIndex);
+            });
+        }
+
+        // Re-evaluate the last edited message and replace its previous hygiene event.
+        // Editing an older message still requires a full-history rescan.
+        if (event_types.MESSAGE_EDITED) {
+            eventSource.on(event_types.MESSAGE_EDITED, (messageIndex) => {
+                const chat = SillyTavern.getContext()?.chat || [];
+                if (messageIndex === chat.length - 1) onMessageReceived(messageIndex, 'edited');
             });
         }
 

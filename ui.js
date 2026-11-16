@@ -1,5 +1,5 @@
 import { cycleLength, bleedingDays, pregnancyLength, fertileDays, advanceCycle, hormoneCycleHint, developmentRate } from './cycle-model.js';
-import { setManualCycleDay, setManualPregnancyWeeks, setSecondParent } from './message-handler.js';
+import { setManualCycleDay, setManualPregnancyWeeks, setSecondParent, refreshRegenSnapshot } from './message-handler.js';
 import { reportError } from './diagnostics.js';
 function cycleSummary(who, c, s) {
     if (!hasCycle(s, who) && !c.isPregnant) return isOmegaverse(s) ? roleLabel(s, who) : 'Status';
@@ -1106,6 +1106,7 @@ export function showQuickBar() {
         const pd = getPregnancyData();
         pd.hygieneType = this.value;
         pd.hygieneChangedRpDate = pd.rpDate || null;
+        refreshRegenSnapshot();
         saveSettingsDebounced();
         syncUI();
         updatePromptInjection();
@@ -1113,6 +1114,7 @@ export function showQuickBar() {
     overlay.find('#rp-quick-changed').on('click', function() {
         const pd = getPregnancyData();
         pd.hygieneChangedRpDate = pd.rpDate || null;
+        refreshRegenSnapshot();
         saveSettingsDebounced();
         syncUI();
         updatePromptInjection();
@@ -1679,6 +1681,13 @@ export function setupUI() {
                   <label style="font-size:10px">Cycle days<input id="repro-cycle-length-${who}" type="number" class="text_pole" min="7" max="365" style="width:100%"></label>
                   <label style="font-size:10px">Bleeding days<input id="repro-bleeding-days-${who}" type="number" class="text_pole" min="0" max="30" style="width:100%"></label>
                 </div>
+                <div id="repro-hygiene-${who}" style="display:flex;align-items:center;gap:5px;margin:6px 0">
+                  <label style="font-size:10px;min-width:50px" for="repro-hygiene-${who}-kit">Hygiene</label>
+                  <select id="repro-hygiene-${who}-kit" class="text_pole" style="flex:1;min-width:0">
+                    ${Object.values(HYGIENE).map(h=>`<option value="${h.id}">${h.labelEn}</option>`).join('')}
+                  </select>
+                  <button id="repro-hygiene-${who}-changed" class="menu_button" type="button" style="font-size:10px">Changed</button>
+                </div>
                 <div class="repro-heat-config-${who}" style="margin-top:6px">
                   <label style="display:block;font-size:10px">Heat/rut timing
                     <select id="repro-heat-mode-${who}" class="text_pole" style="width:100%">
@@ -2176,8 +2185,16 @@ export function setupUI() {
                 const root = getPregnancyData(), target = who === 'char' ? getPartnerData() : root;
                 target.hygieneType = kit;
                 target.hygieneChangedRpDate = root.rpDate || null;
+                refreshRegenSnapshot();
                 refreshAll();
                 if (getSettings().showNotifications) showNotification(`Menstrual supplies: ${HYGIENE[kit].labelEn}`, 'info');
+            });
+            $(`#repro-hygiene-${who}-changed`).on('click', function() {
+                const root = getPregnancyData(), target = who === 'char' ? getPartnerData() : root;
+                target.hygieneChangedRpDate = root.rpDate || null;
+                refreshRegenSnapshot();
+                refreshAll();
+                showNotification(`<i class="fa-solid fa-shield-heart"></i> ${carrierName(who)}: hygiene product changed`, 'success');
             });
         }
         $('#repro-trackfor').on('change', function() { getSettings().trackFor = this.value; refreshAll(); });

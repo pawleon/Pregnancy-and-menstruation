@@ -197,3 +197,12 @@ Relevant background: [CDC U.S. Selected Practice Recommendations](https://www.cd
 ## License
 
 Derived from the original project by delidgi. Distributed under **GNU Affero General Public License v3.0 (AGPL-3.0)**, with the original license and attribution retained. Modifications: expanded contraception methods, independent chat settings, AI/scene event processing, configurable reproductive cycles, fantasy gestation and baby development, historical hygiene options, and updated instructions (November 2026).
+
+## v3.21.4 — Menstrual hygiene from RP or manual controls
+
+- Completed changes of pads, tampons, menstrual cups, reusable cloth, sanitary belts and menstrual sponges update the tracked character's hygiene item and last-change time in RP time. Removing protection without replacement can select None.
+- Clear completed narrative actions are recognized automatically; an optional hidden HYGIENE_EVENT marker can clarify the actor but cannot create an event without corresponding action in the narration. Plans, denials and unrelated objects do not count.
+- Existing quick-bar hygiene controls remain. Me and Bot now also have individual hygiene product selectors and **Changed** buttons in their biology settings.
+- Auto-updates apply only to a character actively menstruating. Regeneration, edits to the latest reply, and message deletion use the existing per-chat reproductive snapshots. Manual changes are committed to the current snapshot.
+- Last-change timers are tied to the story's RP_DATE; no device time is invented. If there is no recorded RP time, the product changes but elapsed-hours calculations remain unknown.
+- Parser regression tests cover 29 representative narration cases and the manual integration is covered by source-level checks. Live SillyTavern verification is still needed.

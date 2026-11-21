@@ -32,8 +32,8 @@ function log(c,item){
 export function applyPregnancyPlotEvent(event,{manual=false,silent=false}={}){
  if(!event||!['user','char'].includes(event.who)||!isTracked(event.who))return false;
  const c=carrier(event.who),s=getSettings(),k=event.kind,def=CONDITIONS[event.code];
- if(!c.isPregnant||!['warning','care','ongoing','resolved','loss','partial'].includes(k))return false;
- if(!['loss','partial'].includes(k)&&!def)return false;
+ if(!c.isPregnant||!['warning','care','ongoing','resolved','loss','partial','termination','stillbirth'].includes(k))return false;
+ if(!['loss','partial','termination','stillbirth'].includes(k)&&!def)return false;
  if(k==='partial'&&(!Number.isInteger(event.index)||event.index<1||event.index>(c.fetusCount||1)||c.fetusCount<2))return false;
  const comp=def?active(c,event.code):null;
  if(k==='warning'&&comp)return false;
@@ -53,11 +53,12 @@ export function applyPregnancyPlotEvent(event,{manual=false,silent=false}={}){
    notify(event.who,def.label+' — '+(k==='resolved'?'resolved':k==='care'?'medical care recorded':'monitoring continues'),k,silent);
  }else{
    const before=c.fetusCount||1,partial=k==='partial';
+    const lossType=k==='termination'?'abortion':k==='stillbirth'?'stillbirth':'miscarriage';
    c.lossHistory||=[];
-   const alreadyRecorded=c.lossHistory.some(item=>item.type==='miscarriage' &&
+   const alreadyRecorded=c.lossHistory.some(item=>item.type===lossType &&
      item.rpDate===date() && item.conceptionDate===c.conceptionDate &&
      item.fetusIndex===(partial?event.index:null));
-   if(!alreadyRecorded)c.lossHistory.push({type:'miscarriage',who:event.who,rpDate:date(),weeks:c.pregnancyWeeks||0,
+   if(!alreadyRecorded)c.lossHistory.push({type:lossType,who:event.who,rpDate:date(),weeks:c.pregnancyWeeks||0,
      conceptionDate:c.conceptionDate||null,fetusCount:partial?1:before,
      remaining:partial?before-1:0,fetusIndex:partial?event.index:null,
      secondParent:c.fatherName||null,manual});
@@ -75,7 +76,7 @@ export function applyPregnancyPlotEvent(event,{manual=false,silent=false}={}){
      c.lossRecovery={startRpDate:date(),bleeding:'unknown',cycleResumed:false};
      if(manual)c._userSetWeeksAt=Date.now();
      // Do NOT create babies, remove existing children, or fabricate childbirth postpartum.
-     notify(event.who,'Confirmed pregnancy loss; recovery tracking started','loss',silent);
+     notify(event.who,'Confirmed '+lossType+'; recovery tracking started','loss',silent);
      if(!s._historyScanInProgress){
        try{
          const n=SillyTavern.getContext()?.chat?.length||0,suf=event.who==='char'?'Char':'User';
@@ -89,6 +90,15 @@ export function applyPregnancyPlotEvent(event,{manual=false,silent=false}={}){
  return true;
 }
 export function recordManualPregnancyEvent(event){return applyPregnancyPlotEvent(event,{manual:true});}
+export function setLossRecoveryBleeding(who,value){
+ if(!['user','char'].includes(who)||!isTracked(who)||!['unknown','ongoing','stopped'].includes(value))return false;
+ const c=carrier(who);
+ if(!c.lossRecovery||c.isPregnant||c.lossRecovery.bleeding===value)return false;
+ createUndoCheckpoint('Pregnancy-loss recovery bleeding');
+ c.lossRecovery.bleeding=value;
+ saveSettingsDebounced();
+ return true;
+}
 export function resumeLossRecovery(who){
  if(!['user','char'].includes(who)||!isTracked(who))return false;
  const c=carrier(who);

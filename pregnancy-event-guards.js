@@ -9,6 +9,9 @@ export const CONDITIONS=Object.freeze({
  GESTATIONAL_DIABETES:{label:'Gestational diabetes',term:/\bgestational diabetes\b/i,severity:'warning'},
  OTHER:{label:'Pregnancy complication',term:/\bpregnancy complication\b/i,severity:'warning'}
 });
+const SPECIAL= /<!--\s*\[(ABORTION|STILLBIRTH)(?::(CHAR))?\]\s*-->/gi;
+const TERMINATION=/\b(?:underwent an abortion|had an abortion|abortion was performed|completed the abortion|pregnancy was terminated|termination was completed)\b/i;
+const STILLBORN=/\b(?:was stillborn|were stillborn|stillborn (?:baby|child|twin)|stillbirth (?:was|has been) confirmed|confirmed (?:the |a )?stillbirth)\b/i;
 const TAG=/<!--\s*\[(?:PREG_EVENT:(USER|CHAR):(WARNING|CARE|ONGOING|RESOLVED):([A-Z_]+)|(MISCARRIAGE)(?::(CHAR))?|PREG_LOSS:(USER|CHAR):([1-4]))\]\s*-->/gi;
 const UNCERTAIN=/\b(?:might|may|could|would|should|possibly|possible|risk of|fear(?:s|ed|ing)?|worri(?:es|ed)|suspect(?:s|ed)?|if|whether|hypothetical(?:ly)?|what if|dream(?:ed|t)?|nightmare|flashback|remember(?:ed|s)?|recalled|previously|years ago|last year|in the past|before this pregnancy|not|never|didn't|doesn't|hasn't|wasn't|ruled out|false alarm|scare|plan(?:ned|ning)?|discussed)\b/i;
 const THIRD=/\b(?:her sister|his sister|their sister|her friend|his friend|their friend|her mother|his mother|neighbor|neighbour|other patient|another woman|someone else|aunt|stranger|coworker|another character)\b/i;
@@ -60,7 +63,21 @@ export function parsePregnancyPlotEvents(raw,options={}){
    if(seen.has(key))continue;
    seen.add(key);out.push({who,kind,code,index});
  }
- const totalOwners=new Set(out.filter(e=>e.kind==='loss').map(e=>e.who));
+ SPECIAL.lastIndex=0;
+ for(const m of source.matchAll(SPECIAL)){
+   const who=m[2]?'char':'user',kind=m[1]==='ABORTION'?'termination':'stillbirth';
+   if(options.trackFor!=='both'&&options.trackFor!==who)continue;
+   if(!['user','char','both'].includes(options.trackFor))continue;
+   if(!sentences.some(c=>owns(c,who,options)&&!UNCERTAIN.test(c)&&
+      (kind==='termination'?TERMINATION.test(c):STILLBORN.test(c))))continue;
+   const key=[who,kind].join(':');
+   if(!seen.has(key)){seen.add(key);out.push({who,kind,code:null,index:null});}
+ }
+ const totalOwners=new Set(out.filter(e=>['loss','termination','stillbirth'].includes(e.kind)).map(e=>e.who));
  const partialOwners=new Set(out.filter(e=>e.kind==='partial').map(e=>e.who));
- return out.filter(e=>!(totalOwners.has(e.who)&&partialOwners.has(e.who)));
+ const final=out.filter(e=>!(totalOwners.has(e.who)&&partialOwners.has(e.who)));
+ const counts=new Map();
+ for(const e of final)if(['loss','termination','stillbirth'].includes(e.kind))
+   counts.set(e.who,(counts.get(e.who)||0)+1);
+ return final.filter(e=>!(['loss','termination','stillbirth'].includes(e.kind)&&counts.get(e.who)>1));
 }

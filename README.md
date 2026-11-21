@@ -206,3 +206,46 @@ Derived from the original project by delidgi. Distributed under **GNU Affero Gen
 - Auto-updates apply only to a character actively menstruating. Regeneration, edits to the latest reply, and message deletion use the existing per-chat reproductive snapshots. Manual changes are committed to the current snapshot.
 - Last-change timers are tied to the story's RP_DATE; no device time is invented. If there is no recorded RP time, the product changes but elapsed-hours calculations remain unknown.
 - Parser regression tests cover 29 representative narration cases and the manual integration is covered by source-level checks. Live SillyTavern verification is still needed.
+
+
+## v3.22.0 — Plot-driven pregnancy complications and confirmed loss
+
+**Default:** no random miscarriage. Pregnancy warnings happen only after a scene establishes a diagnosis and includes a validated hidden marker. A pregnancy scare, cramping, bleeding, hospital visit, recalled loss, or any marker by itself never ends a pregnancy.
+
+### Per-chat controls
+
+Open **Manual pregnancy / baby → Pregnancy complications / recovery**. The **Warning source** setting is per chat:
+- **Plot-confirmed only (default):** no randomized warnings or treatment outcomes.
+- **Plot + scheduled warnings:** opt in to the legacy planned-complication schedule; these warnings never automatically trigger loss.
+- **Manual warnings only:** all new warnings require a manual action.
+
+The same panel provides **Warning**, **Care received**, **Monitoring**, **Resolved**, **Confirm miscarriage**, **Confirm stillbirth**, **Confirm partial loss** (requires an explicitly selected fetus), and **Confirm menstrual cycle returned**. Select the carrier using the existing User/Character selector. Manual changes use existing undo checkpoints and refresh regeneration snapshots. Notifications may be turned off per chat.
+
+### Supported RP event markers
+
+All markers must be supported by actual scene narration, be attributed to the carrier, and pass the strict scanner guards. Neither a hidden marker alone nor narrative keywords alone can cause loss.
+
+- `<!-- [PREG_EVENT:USER:WARNING:THREATENED_MISCARRIAGE] -->` — confirmed clinical warning, not actual miscarriage. Substitute `CHAR` for the character carrier.
+- `<!-- [PREG_EVENT:USER:CARE:THREATENED_MISCARRIAGE] -->` — completed medical care; does not automatically cure the condition.
+- `<!-- [PREG_EVENT:USER:ONGOING:THREATENED_MISCARRIAGE] -->` — medically confirmed continued monitoring.
+- `<!-- [PREG_EVENT:USER:RESOLVED:THREATENED_MISCARRIAGE] -->` — confirmed resolution while pregnancy continues.
+- `<!-- [MISCARRIAGE] -->` or `<!-- [MISCARRIAGE:CHAR] -->` — strictly confirmed pregnancy loss, not a risk, scare, plan, flashback, or event involving someone else.
+- `<!-- [PREG_LOSS:USER:2] -->` — confirmed loss of specifically the *second* fetus, with evidence of an ongoing surviving pregnancy. Explicit index 1–4 is required, no fetus is guessed.
+- `<!-- [STILLBIRTH] -->` / `<!-- [STILLBIRTH:CHAR] -->` — explicitly confirmed stillbirth (no living baby created).
+- `<!-- [ABORTION] -->` / `<!-- [ABORTION:CHAR] -->` — completed termination only; historical mentions, fears and planning cannot trigger it.
+
+Supported diagnosis codes: `THREATENED_MISCARRIAGE`, `LOW_PROGESTERONE`, `CERVICAL_INSUFFICIENCY`, `PLACENTA_PREVIA`, `PREECLAMPSIA`, `ANEMIA`, `GESTATIONAL_DIABETES`, `OTHER`.
+
+Pregnancy-loss outcomes are stored separately from existing baby and childbirth records. Complete losses start an independent **loss recovery** record with manual bleeding status and cycle-return controls. This state is not childbirth postpartum and does not automatically count bleeding as menstruation. Existing baby records and unrelated carriers are left unchanged. Independent Omegaverse heat/rut settings remain separate from menstrual tracking.
+
+### False-positive safeguards and tests
+
+The scanner rejects the absence of explicit tags, vague symptoms, hypotheticals, negated events, flashbacks, unrelated people, the wrong carrier, mixed full/partial loss events, missing twin identity, and conflicting complete-loss outcomes. When both carriers are tracked, the affected carrier must be explicitly identifiable in the same confirmation sentence. A qualifying event is checkpointed with the existing per-chat history/snapshot system for regeneration and edits.
+
+Run the new regression suite:
+
+```sh
+node --experimental-default-type=module --test tests/pregnancy-event-guards.test.mjs
+```
+
+**Safety notes:** This is a fictional RP state tracker, not a diagnostic or prevention model. It does not simulate real miscarriage risks or imply that medical care guarantees prevention of pregnancy loss. The parser favors missed triggers over false-positive termination; manual actions are provided as fallbacks. Existing chat data is retained and missing new fields are initialized without deleting old records.

@@ -1,6 +1,7 @@
 import { cycleLength, bleedingDays, pregnancyLength, fertileDays, advanceCycle, hormoneCycleHint, developmentRate } from './cycle-model.js';
 import { getContraception, getContraceptionDetails, getSettings } from './state.js';
 import { parseContraceptionEvents } from './contraception-events.js';
+import { parsePregnancyPlotEvents } from './pregnancy-event-guards.js';
 // ═══════════════════════════════════════════
 // Internal implementation note.
 // ═══════════════════════════════════════════
@@ -108,17 +109,14 @@ export function scanMessage(text, isUserMessage = false) {
     let hasConception = CONCEPTION_RE_STRICT.test(text);
     const hasBirth = BIRTH_RE_STRICT.test(text) && hasCompletedDelivery(text);
     const hasSexReveal = SEX_REVEAL_RE_STRICT.test(text);
-    let hasMiscarriage = MISCARRIAGE_RE_STRICT.test(text);
+    // Never use the permissive legacy detector to terminate pregnancies.
+    // Dedicated plot events require affirmative narrative and explicit carrier.
+    let hasMiscarriage = false;
     let hasAbortion = ABORTION_RE_STRICT.test(text);
 
     // Internal implementation note.
     // Internal implementation note.
-    if (hasMiscarriage) {
-        const textNoTags = text.replace(/<!--[\s\S]*?-->/g, '');
-        if (!/(\u0432\u044b\u043a\u0438\u0434\u044b\u0448|miscarr|\u043a\u0440\u043e\u0432\u043e\u0442\u0435\u0447|\u043a\u0440\u043e\u0432(?:\u044c|\u0438|\u044c\u044e)|\u043f\u043e\u0442\u0435\u0440(?:\u044f|\u044f\u043b|\u044f\u043b\u0430|\u044f\u043b\u0438)|\u0441\u0445\u0432\u0430\u0442\u043a|\u0441\u043f\u0430\u0437\u043c|\u0431\u043e\u043b\u044c|\u0441\u043a\u043e\u0440\u0430\u044f|\u0431\u043e\u043b\u044c\u043d\u0438\u0446|\u0432\u0440\u0430\u0447|\u043f\u043b\u043e\u0434|\u0441\u0440\u044b\u0432|\u0442\u044f\u043d\u0443\u0449|\u0437\u0430\u043c\u0435\u0440\u0448)/i.test(textNoTags)) {
-            hasMiscarriage = false;
-        }
-    }
+    // Strict miscarriage scanning is handled in pregnancy-event-guards.js.
     if (hasAbortion) {
         const textNoTags = text.replace(/<!--[\s\S]*?-->/g, '');
         if (!/(\u0430\u0431\u043e\u0440\u0442|abortion|\u043f\u0440\u0435\u0440\u044b\u0432|\u043a\u043b\u0438\u043d\u0438\u043a|\u043f\u0440\u043e\u0446\u0435\u0434\u0443\u0440|\u0432\u0430\u043a\u0443\u0443\u043c|\u0442\u0430\u0431\u043b\u0435\u0442\u043a|\u0433\u0438\u043d\u0435\u043a\u043e\u043b\u043e\u0433|\u043e\u043f\u0435\u0440\u0430\u0446)/i.test(textNoTags)) {
@@ -529,7 +527,7 @@ export function messageRaw(msg) {
 
 // Internal implementation note.
 // Internal implementation note.
-export const REPRO_TAG_RE = /<!--\s*\[(?:RP_STATUS|RP_DATE|CONCEPTION_CHECK|BIRTH|MISCARRIAGE|ABORTION|SEX_REVEAL|CYCLE_DAY|PREGNANCY_STATE|BABY_TRAITS|CONTRACEPTION_EVENT|HYGIENE_EVENT)(?::CHAR)?[\s\S]*?-->/gi;
+export const REPRO_TAG_RE = /<!--\s*\[(?:RP_STATUS|RP_DATE|CONCEPTION_CHECK|BIRTH|MISCARRIAGE|PREG_EVENT|PREG_LOSS|ABORTION|SEX_REVEAL|CYCLE_DAY|PREGNANCY_STATE|BABY_TRAITS|CONTRACEPTION_EVENT|HYGIENE_EVENT)(?::CHAR)?[\s\S]*?-->/gi;
 
 export function hasReproTags(text) {
     REPRO_TAG_RE.lastIndex = 0;
@@ -555,7 +553,8 @@ export function stripHiddenTags(text) {
     text = text.replace(/<!--\s*repro\b[\s\S]*?-->/gi, '');
     text = text.replace(/\[?CONCEPTION_CHECK(?::CHAR)?\]?/gi, '');
     text = text.replace(/\[?BIRTH(?::CHAR)?\]?(?!\w)/gi, '');
-    text = text.replace(/\[?MISCARRIAGE\]?/gi, '');
+    text = text.replace(/\[?MISCARRIAGE(?::CHAR)?\]?/gi, '');
+    text = text.replace(/\[?PREG_(?:EVENT|LOSS):[^\]]+\]?/gi, '');
     text = text.replace(/\[?ABORTION\]?(?!\w)/gi, '');
     text = text.replace(/\[?SEX_REVEAL(?::CHAR)?\]?/gi, '');
     text = text.replace(/\[?CYCLE_DAY[:\s]*\d+\]?/gi, '');
@@ -597,11 +596,12 @@ export async function scanFullHistory() {
     // Internal implementation note.
     const { applyScanResult, createPregnancyFromWeeks, createPregnancyFromStateTag, partnerCheckConception, partnerBirth, createUndoCheckpoint } = await import('./pregnancy.js');
     const { processDateTag } = await import('./message-handler.js');
-    const { getPregnancyData, getPartnerData, getSettings, setCycleDay } = await import('./state.js');
+    const { applyPregnancyPlotEvent } = await import('./pregnancy-events.js');
+    const { getPregnancyData, getPartnerData, getSettings, setCycleDay, carrierName: carrierNameForScan } = await import('./state.js');
     const { defaultPregnancyData } = await import('./config.js');
 
     const s = getSettings();
-    const stats = { processed: 0, conceptions: 0, births: 0, charConceptions: 0, charBirths: 0, dates: 0, sexReveals: 0, charSexReveals: 0 };
+    const stats = { processed: 0, conceptions: 0, births: 0, charConceptions: 0, charBirths: 0, dates: 0, sexReveals: 0, charSexReveals: 0, userLosses:0, charLosses:0 };
 
     // Internal implementation note.
     // Internal implementation note.
@@ -621,6 +621,9 @@ export async function scanFullHistory() {
         weightGain: p.weightGain, babyActivity: p.babyActivity,
     }) : null;
     const savedPartner = p.partner ? structuredClone(p.partner) : null;
+    const savedLossHistory = Array.isArray(p.lossHistory) ? structuredClone(p.lossHistory) : [];
+    const savedLossRecovery = p.lossRecovery ? structuredClone(p.lossRecovery) : null;
+    const savedCompEvents = Array.isArray(p.complicationEvents) ? structuredClone(p.complicationEvents) : [];
     const savedGrown = Array.isArray(p.grownChildren) ? [...p.grownChildren] : [];
     const savedBabyState = p.hasBaby ? {
         hasBaby: true,
@@ -645,6 +648,9 @@ export async function scanFullHistory() {
     Object.assign(p, structuredClone(defaultPregnancyData));
     if (undoSnapshot) p._undoSnapshot = undoSnapshot;
     p.grownChildren = savedGrown;
+    p.lossHistory = savedLossHistory;
+    p.lossRecovery = savedLossRecovery;
+    p.complicationEvents = savedCompEvents;
     // Internal implementation note.
     setCycleDay(14, false);
 
@@ -757,6 +763,18 @@ export async function scanFullHistory() {
 
             // Internal implementation note.
             const tagResult = scanMessage(text);
+            const plotEvents = parsePregnancyPlotEvents(text, {
+                trackFor:s.trackFor,
+                userName:carrierNameForScan('user'),charName:carrierNameForScan('char'),
+            });
+            for(const event of plotEvents){
+                if(event.kind==='warning' && s.complicationWarningSource==='manual')continue;
+                if(applyPregnancyPlotEvent(event,{silent:true}) &&
+                    (event.kind==='loss' || event.kind==='partial')){
+                    stats[event.who==='char'?'charLosses':'userLosses']++;
+                }
+            }
+            const plotLoss=plotEvents.some(e=>e.kind==='loss' || e.kind==='partial');
             if (tagResult) {
                 // Internal implementation note.
                 if (tagResult.vaginal_ejaculation_occurred && tagResult._source === 'keyword' && msg.is_user) {
@@ -814,7 +832,7 @@ export async function scanFullHistory() {
             // Internal implementation note.
             {
                 const p3 = getPregnancyData();
-                if (!p3.isPregnant) {
+                if (!p3.isPregnant && !plotLoss) {
                     const pregState = scanPregnancyStateTag(text);
                     if (pregState && createPregnancyFromStateTag(pregState, { notify: false })) {
                         stats.conceptions++;
@@ -825,7 +843,7 @@ export async function scanFullHistory() {
             // Internal implementation note.
             {
                 const p4 = getPregnancyData();
-                if (!p4.isPregnant) {
+                if (!p4.isPregnant && !plotLoss) {
                     const weeksData = scanWeeksFromText(text);
                     if (weeksData && createPregnancyFromWeeks(weeksData.weeks, { notify: false })) {
                         stats.conceptions++;
@@ -847,7 +865,7 @@ export async function scanFullHistory() {
 
     // Manual/current user pregnancy should survive a full scan when the history has
     // no reproductive evidence capable of rebuilding it.
-    if (savedUserPregnancy && stats.conceptions === 0 && stats.births === 0) {
+    if (savedUserPregnancy && stats.conceptions === 0 && stats.births === 0 && stats.userLosses === 0) {
         Object.assign(getPregnancyData(), savedUserPregnancy);
     }
 
@@ -855,8 +873,8 @@ export async function scanFullHistory() {
     // reproductive events, preserve that state instead of silently deleting it.
     if (savedPartner) {
         const rebuiltPartner = getPartnerData();
-        const noCharEvidence = stats.charConceptions === 0 && stats.charBirths === 0 && stats.charSexReveals === 0;
-        const lostActivePregnancy = savedPartner.isPregnant && !rebuiltPartner.isPregnant && stats.charBirths === 0;
+        const noCharEvidence = stats.charConceptions === 0 && stats.charBirths === 0 && stats.charSexReveals === 0 && stats.charLosses === 0;
+        const lostActivePregnancy = savedPartner.isPregnant && !rebuiltPartner.isPregnant && stats.charBirths === 0 && stats.charLosses === 0;
         if (noCharEvidence || lostActivePregnancy) getPregnancyData().partner = savedPartner;
     }
 

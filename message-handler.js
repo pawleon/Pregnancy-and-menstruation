@@ -13,6 +13,8 @@ import { conceptionTerm, pregnancyDatingMode } from './pregnancy.js';
 import { updateBabyCare } from './baby-care.js';
 import { DISRUPTIONS, disruptionShift, HYGIENE } from './cycle-realism.js';
 import { parseHygieneEvents } from './hygiene-events.js';
+import { parsePregnancyPlotEvents } from './pregnancy-event-guards.js';
+import { applyPregnancyPlotEvent, lossCyclePaused } from './pregnancy-events.js';
 import { updatePromptInjection } from './prompts.js';
 import { syncUI, buildInfoblockHtml } from './ui.js';
 import { showNotification } from './notifications.js';
@@ -208,7 +210,12 @@ function runScan() {
     // Internal implementation note.
     const p = getPregnancyData();
     const chatIdNow = getCurrentChatId();
-    if (isRegen) restoreTurnBaseline(positionId);
+    // Full state rollback for edits to a turn containing a plot pregnancy event.
+    // Merely restoring menstrual hygiene would leave a stale confirmed loss.
+    if (isRegen || (s._lastScannedPosition === positionId &&
+        p._plotLastAppliedPosition === positionId && textHash !== s._lastScannedHash)){
+        restoreTurnBaseline(positionId);
+    }
     else if (s._lastScannedPosition === positionId && p._turnBaseline?.pos === positionId &&
         textHash !== s._lastScannedHash) {
         // Undo the previous auto hygiene change when the latest message is edited.
@@ -253,6 +260,21 @@ function runScan() {
             const label = HYGIENE[event.type]?.labelEn || event.type;
             showNotification(`<i class="fa-solid fa-shield-heart"></i> ${carrierName(event.who)}: ${event.action === 'remove' ? 'removed menstrual protection' : 'changed ' + label}`, 'success');
         }
+    }
+
+    // An explicit marker is never sufficient on its own: validate actual
+    // finished scene events, ownership, negation and historical references.
+    let plotChanged=false;
+    for(const event of parsePregnancyPlotEvents(text,{
+        trackFor:s.trackFor,userName:carrierName('user'),charName:carrierName('char')
+    })){
+        if(event.kind==='warning' && s.complicationWarningSource==='manual')continue;
+        if(applyPregnancyPlotEvent(event))plotChanged=true;
+    }
+    if(plotChanged){
+        p._plotLastAppliedPosition=positionId;
+        pushStateHistory(positionId);
+        syncUI();updatePromptInjection();
     }
 
     // 1) Try tag-based detection (if model added tags)
@@ -814,7 +836,7 @@ function advanceTime(s, p, daysPassed) {
     }
     // ── Advance cycle day (per-chat configurable cycle length) ──
     const userPostpartum = getPostpartum(p, p);
-    if (!p.isPregnant && isTracked('user') && hasCycle(s, 'user') && (!userPostpartum || userPostpartum.cycleReturned)) {
+    if (!p.isPregnant && !lossCyclePaused('user') && isTracked('user') && hasCycle(s, 'user') && (!userPostpartum || userPostpartum.cycleReturned)) {
         const oldDay = getCycleDay();
         // Internal implementation note.
         // Internal implementation note.
@@ -944,7 +966,7 @@ function maybeGraduateBabies(s, p) {
 // ─── Reveal planned complications when their week arrives ───
 
 function revealPlannedComplications(s, p, oldWeeks, newWeeks) {
-    if (!p._plannedComplications || p._plannedComplications.length === 0) return;
+    if (s.complicationWarningSource !== 'plot_scheduled' || !p._plannedComplications || p._plannedComplications.length === 0) return;
     for (const pc of p._plannedComplications) {
         if (pc.revealed) continue;
         if (pc.revealWeek > oldWeeks && pc.revealWeek <= newWeeks) {

@@ -766,7 +766,7 @@ export async function scanFullHistory() {
             for(const event of plotEvents){
                 if(event.kind==='warning' && s.complicationWarningSource==='manual')continue;
                 if(applyPregnancyPlotEvent(event,{silent:true}) &&
-                    (event.kind==='loss' || event.kind==='partial')){
+                    (['loss','partial','stillbirth','termination'].includes(event.kind))){
                     stats[event.who==='char'?'charLosses':'userLosses']++;
                 }
             }

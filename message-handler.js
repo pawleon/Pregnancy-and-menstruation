@@ -816,7 +816,9 @@ function advanceTime(s, p, daysPassed) {
                 const w = Math.floor((new Date(p.rpDate).getTime() - new Date(c.conceptionDate).getTime()) / (7 * 86400000));
                 const dur = conceptionTerm(s,'char',c);
                 if (w >= 0 && w !== c.pregnancyWeeks) {
+                    const oldCharWeeks=c.pregnancyWeeks;
                     c.pregnancyWeeks = w;
+                    revealPlannedComplications(s,c,oldCharWeeks,w,'char');
                     changed = true;
                 }
 
@@ -970,7 +972,7 @@ function maybeGraduateBabies(s, p) {
 
 // ─── Reveal planned complications when their week arrives ───
 
-function revealPlannedComplications(s, p, oldWeeks, newWeeks) {
+function revealPlannedComplications(s, p, oldWeeks, newWeeks, who='user') {
     if (s.complicationWarningSource !== 'plot_scheduled' || !p._plannedComplications || p._plannedComplications.length === 0) return;
     for (const pc of p._plannedComplications) {
         if (pc.revealed) continue;
@@ -994,7 +996,7 @@ function revealPlannedComplications(s, p, oldWeeks, newWeeks) {
                 const icon = pc.severity === 'critical'
                     ? '<i class="fa-solid fa-circle-exclamation"></i>'
                     : '<i class="fa-solid fa-triangle-exclamation"></i>';
-                showNotification(`${icon} Complication (${pc.revealWeek} weeks): ${pc.type}`, pc.severity === 'critical' ? 'warning' : 'info');
+                showNotification(`${icon} ${carrierName(who)} complication (${pc.revealWeek} weeks): ${pc.type}`, pc.severity === 'critical' ? 'warning' : 'info');
             }
         }
     }

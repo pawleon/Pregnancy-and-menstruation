@@ -70,7 +70,16 @@ function cycleScenePrompt(s) {
         if (!isTracked(who) || !hasCycle(s, who)) continue;
         const c = who === 'char' ? getPartnerData() : getPregnancyData();
         const pp = getPostpartum(c, getPregnancyData());
-        if (c.isPregnant || lossCyclePaused(who) || (pp && !pp.cycleReturned)) continue;
+        if (c.isPregnant || (pp && !pp.cycleReturned)) continue;
+        if (lossCyclePaused(who)) {
+            // Pregnancy-loss menstrual recovery does not disable independent
+            // fantasy heat/rut cycles that the player configured separately.
+            if (heatSettings(s,who).mode === 'independent') {
+                const state=heatDay(s,who,c.cycleDay||1,getPregnancyData().rpDate);
+                if (state?.active) b += `${who}: ${state.type==='rut'?'rut':'heat'} cycle active independently; never imply menstruation has resumed.\n`;
+            }
+            continue;
+        }
         const d = who === 'char' ? c.cycleDay || 1 : getCycleDay();
         if (d <= bleedingDays(s, who) && hasMenstrualCycle(s,who)) {
             b += `${who}: menstruating. Reflect only scene-supported blood, hygiene, or discomfort; never force actions.\n`;

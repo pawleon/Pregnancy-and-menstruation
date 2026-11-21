@@ -299,6 +299,9 @@ jQuery(async () => {
                      msg.mes.includes('[PREG_EVENT:') ||
                      msg.mes.includes('[PREG_LOSS:') ||
                      msg.mes.includes('[ABORTION]') ||
+                     msg.mes.includes('[ABORTION:CHAR]') ||
+                     msg.mes.includes('[STILLBIRTH]') ||
+                     msg.mes.includes('[STILLBIRTH:CHAR]') ||
                      msg.mes.includes('[SEX_REVEAL]') ||
                      msg.mes.includes('[CYCLE_DAY') ||
                      msg.mes.includes('[RP_STATUS:') ||

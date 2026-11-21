@@ -43,7 +43,7 @@ import { recordManualContraception, getLastContraceptionEvent } from './contrace
 import { manualContraceptionNotice } from './contraception-notices.js';
 import { contraceptionStatus, activeProtectionMethods } from './contraception-rules.js';
 import { showNotification } from './notifications.js';
-import { recordManualPregnancyEvent, resumeLossRecovery, lossCyclePaused } from './pregnancy-events.js';
+import { recordManualPregnancyEvent, resumeLossRecovery, setLossRecoveryBleeding, lossCyclePaused } from './pregnancy-events.js';
 import { CONDITIONS } from './pregnancy-event-guards.js';
 
 function ic(n) { return `<i class="fa-solid ${n}"></i>`; }
@@ -1586,9 +1586,14 @@ export function syncUI() {
            ' · '+active.length+' unresolved · '+losses+' recorded loss(es)'+
            (lossCyclePaused(compWho)?' · cycle recovery pending':'');
     }
-    for(const kind of ['warning','care','ongoing','resolved','loss','partial']){
+    for(const kind of ['warning','care','ongoing','resolved','loss','stillbirth','partial']){
         const button=el('repro-comp-'+kind);
         if(button)button.disabled=!compCarrier.isPregnant || (kind==='partial'&&(compCarrier.fetusCount||1)<2);
+    }
+    const bleeding=el('repro-comp-bleeding');
+    if(bleeding){
+        bleeding.value=compCarrier.lossRecovery?.bleeding||'unknown';
+        bleeding.disabled=!compCarrier.lossRecovery||compCarrier.isPregnant;
     }
     const cycleReturn=el('repro-comp-cycle-return');
     if(cycleReturn)cycleReturn.disabled=!lossCyclePaused(compWho);
@@ -2034,6 +2039,7 @@ export function setupUI() {
                         <button type="button" id="repro-comp-resolved" class="menu_button" style="flex:1">Resolved</button>
                     </div>
                     <button type="button" id="repro-comp-loss" class="menu_button redWarningBG" style="width:100%;margin-top:6px">Confirm miscarriage (entire pregnancy)</button>
+                    <button type="button" id="repro-comp-stillbirth" class="menu_button redWarningBG" style="width:100%;margin-top:5px">Confirm stillbirth (no living baby)</button>
                     <div style="display:flex;align-items:center;gap:4px;margin-top:5px">
                         <select id="repro-comp-loss-index" class="text_pole" style="flex:0 0 100px">
                             <option value="1">Fetus 1</option><option value="2">Fetus 2</option>
@@ -2041,6 +2047,12 @@ export function setupUI() {
                         </select>
                         <button type="button" id="repro-comp-partial" class="menu_button" style="flex:1">Confirm partial loss</button>
                     </div>
+                    <label style="display:block;margin-top:6px" for="repro-comp-bleeding">Loss-recovery bleeding (manual)</label>
+                    <select id="repro-comp-bleeding" class="text_pole" style="width:100%">
+                        <option value="unknown">Unknown / not established</option>
+                        <option value="ongoing">Ongoing</option>
+                        <option value="stopped">Stopped</option>
+                    </select>
                     <button type="button" id="repro-comp-cycle-return" class="menu_button" style="width:100%;margin-top:5px">Confirm menstrual cycle returned</button>
                     <small style="display:block;opacity:.7;margin-top:5px">A warning alone never ends pregnancy. Treatment never auto-cures. Confirmed losses remain in RP history, separate from existing babies. Manual changes can be undone.</small>
                 </details>
@@ -2429,6 +2441,16 @@ export function setupUI() {
                 refreshRegenSnapshot();syncUI();updatePromptInjection();
             }
         });
+        $('#repro-comp-stillbirth').on('click',function(){
+            if(warnIfNoChat())return;
+            const who=$('#repro-manual-who').val()||'user';
+            const carrier=who==='char'?getPartnerData():getPregnancyData();
+            if(!carrier.isPregnant)return;
+            if(!confirm('CONFIRM stillbirth for '+carrierName(who)+'? No living baby will be created.'))return;
+            if(recordManualPregnancyEvent({who,kind:'stillbirth'})){
+                refreshRegenSnapshot();syncUI();updatePromptInjection();
+            }
+        });
         $('#repro-comp-partial').on('click',function(){
             if(warnIfNoChat())return;
             const who=$('#repro-manual-who').val()||'user';
@@ -2437,6 +2459,13 @@ export function setupUI() {
             if(!carrier.isPregnant || (carrier.fetusCount||1)<2 || index>carrier.fetusCount)return;
             if(!confirm('CONFIRM loss of fetus '+index+' for '+carrierName(who)+'? The other fetus(es) remain tracked.'))return;
             if(recordManualPregnancyEvent({who,kind:'partial',index})){
+                refreshRegenSnapshot();syncUI();updatePromptInjection();
+            }
+        });
+        $('#repro-comp-bleeding').on('change',function(){
+            if(warnIfNoChat())return;
+            const who=$('#repro-manual-who').val()||'user';
+            if(setLossRecoveryBleeding(who,this.value)){
                 refreshRegenSnapshot();syncUI();updatePromptInjection();
             }
         });

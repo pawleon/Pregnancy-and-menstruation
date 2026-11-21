@@ -54,7 +54,10 @@ export function applyPregnancyPlotEvent(event,{manual=false,silent=false}={}){
  }else{
    const before=c.fetusCount||1,partial=k==='partial';
    c.lossHistory||=[];
-   c.lossHistory.push({type:'miscarriage',who:event.who,rpDate:date(),weeks:c.pregnancyWeeks||0,
+   const alreadyRecorded=c.lossHistory.some(item=>item.type==='miscarriage' &&
+     item.rpDate===date() && item.conceptionDate===c.conceptionDate &&
+     item.fetusIndex===(partial?event.index:null));
+   if(!alreadyRecorded)c.lossHistory.push({type:'miscarriage',who:event.who,rpDate:date(),weeks:c.pregnancyWeeks||0,
      conceptionDate:c.conceptionDate||null,fetusCount:partial?1:before,
      remaining:partial?before-1:0,fetusIndex:partial?event.index:null,
      secondParent:c.fatherName||null,manual});

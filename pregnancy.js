@@ -1480,7 +1480,7 @@ export function revealPregnancy(who = 'user') {
 export function getPostpartum(carrier, root) {
     // A real new pregnancy may coexist with past birth history, but should not
     // simultaneously show a current postpartum menstrual status.
-    if (carrier?.isPregnant) return null;
+    if (carrier?.isPregnant || carrier?.lossRecovery) return null;
     const pp = carrier?.postpartum;
     if (!pp?.startRpDate || !root?.rpDate) return null;
     const ms = new Date(root.rpDate).getTime() - new Date(pp.startRpDate).getTime();

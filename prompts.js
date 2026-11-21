@@ -48,7 +48,7 @@ function carrierCycleLine(who, s) {
 }
 
 function realismBlock(s, p) {
-    if (!s.realism || p.isPregnant || !hasMenstrualCycle(s,'user')) return '';
+    if (!s.realism || p.isPregnant || lossCyclePaused('user') || !hasMenstrualCycle(s,'user')) return '';
     if (!hasMenstrualCycle(s, 'user') || !isTracked('user')) return '';
     const day = getCycleDay();
     const method = getContraception('user');

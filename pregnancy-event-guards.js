@@ -60,5 +60,7 @@ export function parsePregnancyPlotEvents(raw,options={}){
    if(seen.has(key))continue;
    seen.add(key);out.push({who,kind,code,index});
  }
- return out;
+ const totalOwners=new Set(out.filter(e=>e.kind==='loss').map(e=>e.who));
+ const partialOwners=new Set(out.filter(e=>e.kind==='partial').map(e=>e.who));
+ return out.filter(e=>!(totalOwners.has(e.who)&&partialOwners.has(e.who)));
 }

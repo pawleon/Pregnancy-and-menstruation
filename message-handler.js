@@ -251,7 +251,7 @@ function runScan() {
         if (!isTracked(event.who) || !hasMenstrualCycle(s, event.who)) continue;
         const target = event.who === 'char' ? getPartnerData() : p;
         const postpartum = getPostpartum(target, p);
-        if (target.isPregnant || (postpartum && !postpartum.cycleReturned)) continue;
+        if (target.isPregnant || lossCyclePaused(event.who) || (postpartum && !postpartum.cycleReturned)) continue;
         const day = event.who === 'char' ? (target.cycleDay || 1) : getCycleDay();
         if (day > bleedingDays(s, event.who)) continue;
         target.hygieneType = event.type;
@@ -793,7 +793,7 @@ function advanceTime(s, p, daysPassed) {
         try {
             const c = getPartnerData();
             // Each selected carrier advances the same cycle model independently.
-            if (!c.isPregnant && hasCycle(s, 'char')) {
+            if (!c.isPregnant && !lossCyclePaused('char') && hasCycle(s, 'char')) {
                 const pp = getPostpartum(c, p);
                 if (!pp || pp.cycleReturned) {
                     c._dynamic = {};

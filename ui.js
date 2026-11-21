@@ -2,6 +2,7 @@ import { cycleLength, bleedingDays, pregnancyLength, fertileDays, advanceCycle, 
 import { setManualCycleDay, setManualPregnancyWeeks, setSecondParent, refreshRegenSnapshot } from './message-handler.js';
 import { reportError } from './diagnostics.js';
 function cycleSummary(who, c, s) {
+    if (lossCyclePaused(who)) return 'Cycle paused — recovery after pregnancy loss';
     if (!hasCycle(s, who) && !c.isPregnant) return isOmegaverse(s) ? roleLabel(s, who) : 'Status';
     if (c.isPregnant && pregnancyIsKnown(c, s)) return `Pregnancy — ${displayPregnancyWeeks(c,s)} weeks`;
     const pp = getPostpartum(c, getPregnancyData());

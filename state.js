@@ -53,6 +53,8 @@ const CHAT_OPTION_DEFAULTS = Object.freeze({
     sexUser: 'unspecified', sexChar: 'unspecified',
     postpartumReturnModeUser: 'estimated', postpartumReturnModeChar: 'estimated',
     postpartumReturnDaysUser: 90, postpartumReturnDaysChar: 90,
+    complicationWarningSource: 'plot',
+    complicationNotifications: true,
     _birthBlockedUntilUser: null,
     _birthBlockedUntilChar: null,
     _conceptionBlockedUntilUser: null,
@@ -85,6 +87,8 @@ function normalizeChatOption(key, value) {
     if (/^postpartumReturnMode(User|Char)$/.test(key))return ['estimated','custom','manual'].includes(value)?value:'estimated';
     if (/^postpartumReturnDays(User|Char)$/.test(key))return Number.isInteger(value)&&value>=1&&value<=3650?value:90;
     if (key === 'pregnancyDatingMode') return ['conception','obstetric'].includes(value) ? value : 'conception';
+    if (key === 'complicationWarningSource') return ['plot','plot_scheduled','manual'].includes(value) ? value : 'plot';
+    if (key === 'complicationNotifications') return typeof value === 'boolean' ? value : true;
     if (key === 'babyDevelopmentRate') {
         const v = Number(value);
         return Number.isFinite(v) && v >= 0.25 && v <= 10 ? v : 1;

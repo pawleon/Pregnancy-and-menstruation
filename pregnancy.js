@@ -193,7 +193,7 @@ export function applyScanResult(result) {
                     const oldTime = new Date(oldDate).getTime();
                     const newTime = newDate.getTime();
                     const daysPassed = Math.floor((newTime - oldTime) / 86400000);
-                    if (daysPassed > 0 && !p.isPregnant) {
+                    if (daysPassed > 0 && !p.isPregnant && !(p.lossRecovery && !p.lossRecovery.cycleResumed)) {
                         const oldCycleDay = getCycleDay();
                         const newCycleDay = advanceCycle(oldCycleDay, daysPassed, cycleLength(s, 'user')).day;
                         setCycleDay(newCycleDay);
@@ -232,7 +232,7 @@ export function applyScanResult(result) {
     }
 
     // Internal implementation note.
-    if (result.cycle_day !== null && result.cycle_day !== undefined && (result._source === 'manual' || !isManualCycleProtected('user'))) {
+    if (result.cycle_day !== null && result.cycle_day !== undefined && !(p.lossRecovery && !p.lossRecovery.cycleResumed && !p.isPregnant) && (result._source === 'manual' || !isManualCycleProtected('user'))) {
         const day = parseInt(result.cycle_day);
         const current = getCycleDay();
         if (day >= 1 && day <= cycleLength(s, 'user') && day !== current) {
@@ -242,7 +242,8 @@ export function applyScanResult(result) {
     }
 
     // Internal implementation note.
-    if (result.miscarriage_occurred || result.abortion_occurred) {
+    // Miscarriage requires strict, attributed event validation in pregnancy-events.js.
+    if (result.abortion_occurred) {
         if (!p.isPregnant) {
             return updated;
         }
@@ -254,7 +255,7 @@ export function applyScanResult(result) {
                 return updated;
             }
         } catch (e) { reportError('[Reproductive] handled exception:', e); }
-        terminatePregnancy(result.abortion_occurred ? 'abortion' : 'miscarriage');
+        terminatePregnancy('abortion');
         return true; // Internal implementation note.
     }
 
@@ -484,7 +485,7 @@ export function applyScanResult(result) {
     }
 
     // Internal implementation note.
-    if (result.complications_detected && result.complications_detected.length > 0 && p.isPregnant) {
+    if (s.complicationWarningSource === 'plot_scheduled' && result.complications_detected && result.complications_detected.length > 0 && p.isPregnant) {
         const { weeks } = calculateWeeksFromDates(p.conceptionDate, p.rpDate, p.pregnancyWeeks);
         for (const compType of result.complications_detected) {
             const exists = p.complications.some(c => c.type === compType && !c.resolved);
@@ -626,6 +627,7 @@ export function checkConception(encounterMethods = []) {
 
     if (success) {
         p.isPregnant = true;
+    p.lossRecovery = null;
         s._birthBlockedUntilUser = null;
         // Internal implementation note.
         // Internal implementation note.
@@ -636,7 +638,7 @@ export function checkConception(encounterMethods = []) {
         p._conceptionAnchored = !!p.rpDate;
         p.pregnancyWeeks = 0;
         p.datingMode=s.pregnancyDatingMode;
-        p._plannedComplications = rollPlannedComplications(conceptionTerm(s, 'user',p));
+        p._plannedComplications = s.complicationWarningSource === 'plot_scheduled' ? rollPlannedComplications(conceptionTerm(s, 'user',p)) : [];
         p._stats.conceptions++;
 
         const twinsChance = s.twinsChance ?? 3;
@@ -796,6 +798,19 @@ export function visitDoctor() {
 
     if (!p.isPregnant) return;
 
+    if (s.complicationWarningSource !== 'plot_scheduled') {
+        const active = (p.complications || []).filter(c => !c.resolved);
+        if (!active.length) return;
+        for (const comp of active) {
+            comp.care ||= [];
+            comp.care.push({kind:'care',rpDate:p.rpDate||null});
+            comp.status = 'under care';
+        }
+        saveSettingsDebounced(); _syncUI(); _updatePromptInjection();
+        if (s.showNotifications && s.complicationNotifications !== false)
+            showNotification('<i class="fa-solid fa-hospital"></i> Medical visit recorded; outcome awaits RP confirmation', 'info');
+        return;
+    }
     if (p.lastDoctorVisitRpDate && p.rpDate) {
         const lastVisit = new Date(p.lastDoctorVisitRpDate);
         const currentRpDate = new Date(p.rpDate);
@@ -869,6 +884,7 @@ export function createPregnancyFromWeeks(weeks, { notify = true } = {}) {
     const mode=s.pregnancyDatingMode==='obstetric'?'obstetric':'conception';
     const elapsedWeeks=Math.max(0,w-(mode==='obstetric'?2:0));
     p.isPregnant = true;
+    p.lossRecovery = null;
     p.datingMode=mode;
     p.conceptionDate = new Date(anchor.getTime() - elapsedWeeks * 7 * 86400000).toISOString();
     p._conceptionAnchored = true;
@@ -903,6 +919,7 @@ export function createPregnancyFromStateTag(pregState, { notify = true } = {}) {
     if (isNaN(conceptionMs)) return false;
 
     p.isPregnant = true;
+    p.lossRecovery = null;
     p.conceptionDate = pregState.conceptionDate;
     p.datingMode = s.pregnancyDatingMode==='obstetric'?'obstetric':'conception';
     p._conceptionAnchored = true;
@@ -946,6 +963,7 @@ export function startManualPregnancy(conceptionDateISO, fetusCount, fetusSex = n
         p._secondParentManual = true;
     }
     p.isPregnant = true;
+    p.lossRecovery = null;
     p.datingMode=s.pregnancyDatingMode;
     p.conceptionDate = conceptionDateISO;
     // Internal implementation note.
@@ -1181,6 +1199,7 @@ export function partnerCheckConception(encounterMethods = []) {
 
     if (success) {
         c.isPregnant = true;
+    c.lossRecovery = null;
         c.pregnancyKnown = !s.hiddenPregnancy;
         c.lastTestResult = null;
         s._birthBlockedUntilChar = null;
@@ -1188,7 +1207,7 @@ export function partnerCheckConception(encounterMethods = []) {
         c._conceptionAnchored = !!p.rpDate;
         c.pregnancyWeeks = 0;
         c.datingMode=s.pregnancyDatingMode;
-        c._plannedComplications = rollPlannedComplications(conceptionTerm(s, 'char',c));
+        c._plannedComplications = s.complicationWarningSource === 'plot_scheduled' ? rollPlannedComplications(conceptionTerm(s, 'char',c)) : [];
         c.healthStatus = 'normal';
         p._stats.conceptions++;
         const mult = roll(1000) / 10;
@@ -1341,6 +1360,7 @@ export function startPartnerPregnancy(conceptionDateISO, fetusCount, fetusSex = 
         c._secondParentManual = true;
     }
     c.isPregnant = true;
+    c.lossRecovery = null;
     c.datingMode=s.pregnancyDatingMode;
     c.conceptionDate = conceptionDateISO;
     c._conceptionAnchored = true;

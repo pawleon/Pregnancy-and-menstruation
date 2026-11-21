@@ -6,6 +6,7 @@ import { activeProtectionMethods, contraceptionStatus } from './contraception-ru
 import { getSettings, getPregnancyData, getPartnerData, getCycleDay, isTracked, getContraception, getContraceptionDetails } from './state.js';
 import { isOmegaverse, hasMenstrualCycle, hasOvulation, hasAnyTracking, canCarry, hasCycle, designationOf, cyclePhase, heatDay, heatSettings } from './omegaverse.js';
 import { pregnancyIsKnown, getPostpartum, monthsTrying, conceptionTerm, displayPregnancyWeeks, pregnancyDatingMode } from './pregnancy.js';
+import { lossCyclePaused } from './pregnancy-events.js';
 import { getParentProfile } from './state.js';
 import { fertileWindow, conceptionStruggle } from './fertility.js';
 import { getFlow, getHygieneState, realismPromptLine, hoursBetween } from './cycle-realism.js';
@@ -36,6 +37,7 @@ function carrierCycleLine(who, s) {
     if (c.isPregnant) return pregnancyIsKnown(c, s) ? `${nm}: pregnant; cycle paused` : `${nm}: pregnancy private; cycle paused`;
     const pp = getPostpartum(c, getPregnancyData());
     if (pp && !pp.cycleReturned) return `${nm}: postpartum; cycle paused`;
+    if (lossCyclePaused(who)) return `${nm}: recovering from confirmed pregnancy loss; menstrual cycle not yet resumed`;
     const day = who === 'char' ? (c.cycleDay || 1) : getCycleDay();
     const method = getContraception(who);
     const active = contraceptionStatus(method, getContraceptionDetails(who), getPregnancyData().rpDate).active;
@@ -68,7 +70,7 @@ function cycleScenePrompt(s) {
         if (!isTracked(who) || !hasCycle(s, who)) continue;
         const c = who === 'char' ? getPartnerData() : getPregnancyData();
         const pp = getPostpartum(c, getPregnancyData());
-        if (c.isPregnant || (pp && !pp.cycleReturned)) continue;
+        if (c.isPregnant || lossCyclePaused(who) || (pp && !pp.cycleReturned)) continue;
         const d = who === 'char' ? c.cycleDay || 1 : getCycleDay();
         if (d <= bleedingDays(s, who) && hasMenstrualCycle(s,who)) {
             b += `${who}: menstruating. Reflect only scene-supported blood, hygiene, or discomfort; never force actions.\n`;
@@ -98,7 +100,9 @@ function pregnancyBlock(who, s, p) {
     b += `Completed delivery only: <!-- [BIRTH${suffix}] --> and <!-- [BABY_TRAITS:{"babies":[{"name":"","fatherName":"","personality":[],"appearance":[]}]}] -->.\n`;
     b += 'Use pregnancy status fields only when relevant: libido, weight_gain, baby_activity, movements, swelling, braxton_hicks, fetal_position, recommendations.\n';
     if (!c.fetusSexRevealed) b += `If a medical reveal occurs: <!-- [SEX_REVEAL${suffix}] -->.\n`;
-    if (who === 'user') b += 'Confirmed loss/termination only: <!-- [MISCARRIAGE] --> or <!-- [ABORTION] -->; never for a scare or plan.\n';
+    b += 'STRICT PLOT EVENTS: Never invent a complication, treatment, improvement or miscarriage. Complications do NOT automatically cause loss. When a doctor actually diagnoses threatened miscarriage for ' + nm + ', and the current narration establishes it, emit <!-- [PREG_EVENT:' + who.toUpperCase() + ':WARNING:THREATENED_MISCARRIAGE] -->. Other supported condition codes: LOW_PROGESTERONE, CERVICAL_INSUFFICIENCY, PLACENTA_PREVIA, PREECLAMPSIA, ANEMIA, GESTATIONAL_DIABETES, OTHER. Use CARE only for COMPLETED medical care with the same code; ONGOING for confirmed monitoring; RESOLVED only for medical confirmation of resolution. A doctor visit or cramps alone is never resolution. Do not emit for potential, future, hypothetical, past, unrelated or negated events.\n';
+    b += 'CONFIRMED pregnancy loss for ' + nm + ' ONLY: <!-- [MISCARRIAGE' + suffix + '] -->. Never use for a warning, fear or scare. With multiples, partial loss requires explicit numbered fetus and confirmed survivor: <!-- [PREG_LOSS:' + who.toUpperCase() + ':2] --> means second fetus only, if explicitly verified. No guessing which fetus is affected.\n';
+    if (who === 'user') b += 'Confirmed completed termination only: <!-- [ABORTION] -->.\n';
     return b;
 }
 

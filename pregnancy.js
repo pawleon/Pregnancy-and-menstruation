@@ -476,7 +476,9 @@ export function applyScanResult(result) {
     }
 
     // Internal implementation note.
-    if (result.health_status && p.isPregnant) {
+    // Plot-driven warnings are authoritative only through validated events.
+    // An unsolicited RP_STATUS adjective must never invent a complication.
+    if (result.health_status && p.isPregnant && s.complicationWarningSource === 'plot_scheduled') {
         const valid = ['normal', 'warning', 'critical'];
         if (valid.includes(result.health_status) && result.health_status !== p.healthStatus) {
             p.healthStatus = result.health_status;

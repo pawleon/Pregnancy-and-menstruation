@@ -43,7 +43,7 @@ function valid(c,kind,code){
  return false;
 }
 export function parsePregnancyPlotEvents(raw,options={}){
- const source=String(raw||'');
+ const source=String(raw||'').replace(/\x60{3}[\s\S]*?\x60{3}/g,'');
  const sentences=plain(source).split(/[\n.!?]+/).map(s=>s.trim()).filter(s=>s.length>5&&s.length<600);
  const out=[],seen=new Set(); TAG.lastIndex=0;
  for(const m of source.matchAll(TAG)){

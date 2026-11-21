@@ -645,7 +645,8 @@ export async function scanFullHistory() {
     if (undoSnapshot) p._undoSnapshot = undoSnapshot;
     p.grownChildren = savedGrown;
     p.lossHistory = savedLossHistory;
-    p.lossRecovery = savedLossRecovery;
+    // Reconstruct recovery at the correct RP event, not before scanning past dates.
+    p.lossRecovery = null;
     p.complicationEvents = savedCompEvents;
     // Internal implementation note.
     setCycleDay(14, false);
@@ -865,6 +866,7 @@ export async function scanFullHistory() {
 
     // Manual/current user pregnancy should survive a full scan when the history has
     // no reproductive evidence capable of rebuilding it.
+    if (!getPregnancyData().lossRecovery && savedLossRecovery && stats.userLosses === 0) getPregnancyData().lossRecovery = savedLossRecovery;
     if (savedUserPregnancy && stats.conceptions === 0 && stats.births === 0 && stats.userLosses === 0) {
         Object.assign(getPregnancyData(), savedUserPregnancy);
     }
@@ -876,6 +878,19 @@ export async function scanFullHistory() {
         const noCharEvidence = stats.charConceptions === 0 && stats.charBirths === 0 && stats.charSexReveals === 0 && stats.charLosses === 0;
         const lostActivePregnancy = savedPartner.isPregnant && !rebuiltPartner.isPregnant && stats.charBirths === 0 && stats.charLosses === 0;
         if (noCharEvidence || lostActivePregnancy) getPregnancyData().partner = savedPartner;
+        else {
+            // A full scan cannot reconstruct a manually created historical
+            // pregnancy from chat prose; preserve its established loss records.
+            const rebuilt=getPartnerData();
+            rebuilt.lossHistory ||= [];
+            for(const item of savedPartner.lossHistory||[]){
+                const key=JSON.stringify([item.type,item.rpDate,item.conceptionDate,item.fetusIndex]);
+                if(!rebuilt.lossHistory.some(x=>JSON.stringify([x.type,x.rpDate,x.conceptionDate,x.fetusIndex])===key))
+                    rebuilt.lossHistory.push(item);
+            }
+            if(!rebuilt.lossRecovery && savedPartner.lossRecovery && stats.charLosses===0)
+                rebuilt.lossRecovery=savedPartner.lossRecovery;
+        }
     }
 
     // Internal implementation note.

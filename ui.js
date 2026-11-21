@@ -1586,6 +1586,16 @@ export function syncUI() {
            ' · '+active.length+' unresolved · '+losses+' recorded loss(es)'+
            (lossCyclePaused(compWho)?' · cycle recovery pending':'');
     }
+    const compHistory=el('repro-comp-history');
+    if(compHistory){
+        const warnings=(compCarrier.complications||[]).filter(x=>!x.resolved)
+            .slice(-3).map(x=>(x.type||'Warning')+' — '+(x.status||'warning'));
+        const losses=(compCarrier.lossHistory||[]).slice(-3).map(x=>
+            (x.type||'Loss')+' · '+(x.rpDate?String(x.rpDate).slice(0,10):'RP date unknown')+
+            ' · '+(x.weeks||0)+' weeks · '+x.fetusCount+' affected'+
+            (x.remaining?' · '+x.remaining+' remaining':''));
+        compHistory.textContent=[...warnings,...losses].join('\n');
+    }
     for(const kind of ['warning','care','ongoing','resolved','loss','stillbirth','partial']){
         const button=el('repro-comp-'+kind);
         if(button)button.disabled=!compCarrier.isPregnant || (kind==='partial'&&(compCarrier.fetusCount||1)<2);
@@ -2021,6 +2031,7 @@ export function setupUI() {
                         <input type="checkbox" id="repro-comp-notices" checked>Show complication notifications
                     </label>
                     <div id="repro-comp-status" style="font-size:10px;opacity:.8;margin:5px 0"></div>
+                    <div id="repro-comp-history" style="font-size:10px;opacity:.85;white-space:pre-line;margin-bottom:5px"></div>
                     <label for="repro-comp-code">Complication</label>
                     <select id="repro-comp-code" class="text_pole" style="width:100%">
                         <option value="THREATENED_MISCARRIAGE">Threatened miscarriage</option>

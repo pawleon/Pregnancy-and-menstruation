@@ -13,7 +13,7 @@ function notify(who,description,kind,silent){
  const s=getSettings();
  if(!silent&&s.showNotifications&&s.complicationNotifications!==false)
    showNotification('<i class="fa-solid fa-heart-pulse"></i> '+carrierName(who)+': '+description,
-     kind==='resolved'?'success':kind==='loss'?'warning':'info');
+     kind==='resolved'?'success':['warning','loss'].includes(kind)?'warning':'info');
 }
 function active(c,code){
  const label=CONDITIONS[code]?.label.toLowerCase();

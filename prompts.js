@@ -102,7 +102,7 @@ function pregnancyBlock(who, s, p) {
     if (!c.fetusSexRevealed) b += `If a medical reveal occurs: <!-- [SEX_REVEAL${suffix}] -->.\n`;
     b += 'STRICT PLOT EVENTS: Never invent a complication, treatment, improvement or miscarriage. Complications do NOT automatically cause loss. When a doctor actually diagnoses threatened miscarriage for ' + nm + ', and the current narration establishes it, emit <!-- [PREG_EVENT:' + who.toUpperCase() + ':WARNING:THREATENED_MISCARRIAGE] -->. Other supported condition codes: LOW_PROGESTERONE, CERVICAL_INSUFFICIENCY, PLACENTA_PREVIA, PREECLAMPSIA, ANEMIA, GESTATIONAL_DIABETES, OTHER. Use CARE only for COMPLETED medical care with the same code; ONGOING for confirmed monitoring; RESOLVED only for medical confirmation of resolution. A doctor visit or cramps alone is never resolution. Do not emit for potential, future, hypothetical, past, unrelated or negated events.\n';
     b += 'CONFIRMED pregnancy loss for ' + nm + ' ONLY: <!-- [MISCARRIAGE' + suffix + '] -->. Never use for a warning, fear or scare. With multiples, partial loss requires explicit numbered fetus and confirmed survivor: <!-- [PREG_LOSS:' + who.toUpperCase() + ':2] --> means second fetus only, if explicitly verified. No guessing which fetus is affected.\n';
-    if (who === 'user') b += 'Confirmed completed termination only: <!-- [ABORTION] -->.\n';
+    b += 'Confirmed completed abortion for ' + nm + ' ONLY: <!-- [ABORTION' + suffix + '] -->; never merely considered, planned or feared. Confirmed stillbirth without a living newborn: <!-- [STILLBIRTH' + suffix + '] -->; DO NOT use BIRTH/BABY_TRAITS for a stillbirth. Only emit these for an established completed RP event involving this carrier.\n';
     return b;
 }
 

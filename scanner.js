@@ -112,18 +112,13 @@ export function scanMessage(text, isUserMessage = false) {
     // Never use the permissive legacy detector to terminate pregnancies.
     // Dedicated plot events require affirmative narrative and explicit carrier.
     let hasMiscarriage = false;
-    let hasAbortion = ABORTION_RE_STRICT.test(text);
+    // Abortion also uses confirmed, attributed events instead of loose keyword matching.
+    let hasAbortion = false;
 
     // Internal implementation note.
     // Internal implementation note.
     // Strict miscarriage scanning is handled in pregnancy-event-guards.js.
-    if (hasAbortion) {
-        const textNoTags = text.replace(/<!--[\s\S]*?-->/g, '');
-        if (!/(\u0430\u0431\u043e\u0440\u0442|abortion|\u043f\u0440\u0435\u0440\u044b\u0432|\u043a\u043b\u0438\u043d\u0438\u043a|\u043f\u0440\u043e\u0446\u0435\u0434\u0443\u0440|\u0432\u0430\u043a\u0443\u0443\u043c|\u0442\u0430\u0431\u043b\u0435\u0442\u043a|\u0433\u0438\u043d\u0435\u043a\u043e\u043b\u043e\u0433|\u043e\u043f\u0435\u0440\u0430\u0446)/i.test(textNoTags)) {
-            hasAbortion = false;
-        }
-    }
-
+    // Abortion verification is delegated to pregnancy-event-guards.js.
     if (hasConception && !looksLikeInternalRelease(text.replace(/<!--[\s\S]*?-->/g, '')) && !withdrawalExposure(text, 'user', sceneMethods.user)) {
         hasConception = false;
     }
@@ -527,7 +522,7 @@ export function messageRaw(msg) {
 
 // Internal implementation note.
 // Internal implementation note.
-export const REPRO_TAG_RE = /<!--\s*\[(?:RP_STATUS|RP_DATE|CONCEPTION_CHECK|BIRTH|MISCARRIAGE|PREG_EVENT|PREG_LOSS|ABORTION|SEX_REVEAL|CYCLE_DAY|PREGNANCY_STATE|BABY_TRAITS|CONTRACEPTION_EVENT|HYGIENE_EVENT)(?::CHAR)?[\s\S]*?-->/gi;
+export const REPRO_TAG_RE = /<!--\s*\[(?:RP_STATUS|RP_DATE|CONCEPTION_CHECK|BIRTH|MISCARRIAGE|PREG_EVENT|PREG_LOSS|STILLBIRTH|ABORTION|SEX_REVEAL|CYCLE_DAY|PREGNANCY_STATE|BABY_TRAITS|CONTRACEPTION_EVENT|HYGIENE_EVENT)(?::CHAR)?[\s\S]*?-->/gi;
 
 export function hasReproTags(text) {
     REPRO_TAG_RE.lastIndex = 0;
@@ -555,7 +550,8 @@ export function stripHiddenTags(text) {
     text = text.replace(/\[?BIRTH(?::CHAR)?\]?(?!\w)/gi, '');
     text = text.replace(/\[?MISCARRIAGE(?::CHAR)?\]?/gi, '');
     text = text.replace(/\[?PREG_(?:EVENT|LOSS):[^\]]+\]?/gi, '');
-    text = text.replace(/\[?ABORTION\]?(?!\w)/gi, '');
+    text = text.replace(/\[?ABORTION(?::CHAR)?\]?(?!\w)/gi, '');
+    text = text.replace(/\[?STILLBIRTH(?::CHAR)?\]?(?!\w)/gi, '');
     text = text.replace(/\[?SEX_REVEAL(?::CHAR)?\]?/gi, '');
     text = text.replace(/\[?CYCLE_DAY[:\s]*\d+\]?/gi, '');
     text = text.replace(/\[?RP_STATUS:\s*\{[\s\S]*?\}\s*\]?/gi, '');
@@ -774,8 +770,12 @@ export async function scanFullHistory() {
                     stats[event.who==='char'?'charLosses':'userLosses']++;
                 }
             }
-            const plotLoss=plotEvents.some(e=>e.kind==='loss' || e.kind==='partial');
+            const plotLoss=plotEvents.some(e=>['loss','partial','termination','stillbirth'].includes(e.kind));
             if (tagResult) {
+                if (plotEvents.some(e=>e.kind==='stillbirth')) {
+                    tagResult.birth_occurred=false;
+                    tagResult.char_birth=false;
+                }
                 // Internal implementation note.
                 if (tagResult.vaginal_ejaculation_occurred && tagResult._source === 'keyword' && msg.is_user) {
                     tagResult.vaginal_ejaculation_occurred = false;

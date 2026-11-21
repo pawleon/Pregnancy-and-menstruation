@@ -65,7 +65,7 @@ export function parsePregnancyPlotEvents(raw,options={}){
  }
  SPECIAL.lastIndex=0;
  for(const m of source.matchAll(SPECIAL)){
-   const who=m[2]?'char':'user',kind=m[1]==='ABORTION'?'termination':'stillbirth';
+   const who=m[2]?'char':'user',kind=m[1].toUpperCase()==='ABORTION'?'termination':'stillbirth';
    if(options.trackFor!=='both'&&options.trackFor!==who)continue;
    if(!['user','char','both'].includes(options.trackFor))continue;
    if(!sentences.some(c=>owns(c,who,options)&&!UNCERTAIN.test(c)&&

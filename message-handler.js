@@ -265,11 +265,15 @@ function runScan() {
     // An explicit marker is never sufficient on its own: validate actual
     // finished scene events, ownership, negation and historical references.
     let plotChanged=false;
+    let plotStillbirth=false;
     for(const event of parsePregnancyPlotEvents(text,{
         trackFor:s.trackFor,userName:carrierName('user'),charName:carrierName('char')
     })){
         if(event.kind==='warning' && s.complicationWarningSource==='manual')continue;
-        if(applyPregnancyPlotEvent(event))plotChanged=true;
+        if(applyPregnancyPlotEvent(event)){
+            plotChanged=true;
+            if(event.kind==='stillbirth')plotStillbirth=true;
+        }
     }
     if(plotChanged){
         p._plotLastAppliedPosition=positionId;
@@ -281,6 +285,7 @@ function runScan() {
     const freshStatus = scanStatusTag(text);
     if (freshStatus) applyStatusData(s, p, freshStatus);
     const tagResult = scanMessage(text, !!lastMessage.is_user);
+    if(tagResult && plotStillbirth){tagResult.birth_occurred=false;tagResult.char_birth=false;}
     if (tagResult?.birth_occurred && !canTriggerBirth(p, s, 'tag')) tagResult.birth_occurred = false;
     if (tagResult) {
         // Ignore conception tag when already pregnant

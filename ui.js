@@ -6,6 +6,7 @@ function cycleSummary(who, c, s) {
     if (c.isPregnant && pregnancyIsKnown(c, s)) return `Pregnancy — ${displayPregnancyWeeks(c,s)} weeks`;
     const pp = getPostpartum(c, getPregnancyData());
     if (pp && !pp.cycleReturned) return 'Cycle paused — postpartum';
+    if (lossCyclePaused(who)) return 'Cycle paused — recovery after pregnancy loss';
     const day = (who === 'char' ? (c.cycleDay || 1) : getCycleDay()) + (c.isPregnant ? daysSinceConception(c, getPregnancyData()) : 0);
     const length = cycleLength(s, who);
     if (day > length) return `Delay ${day - length} days`;
@@ -41,6 +42,8 @@ import { recordManualContraception, getLastContraceptionEvent } from './contrace
 import { manualContraceptionNotice } from './contraception-notices.js';
 import { contraceptionStatus, activeProtectionMethods } from './contraception-rules.js';
 import { showNotification } from './notifications.js';
+import { recordManualPregnancyEvent, resumeLossRecovery, lossCyclePaused } from './pregnancy-events.js';
+import { CONDITIONS } from './pregnancy-event-guards.js';
 
 function ic(n) { return `<i class="fa-solid ${n}"></i>`; }
 
@@ -1046,7 +1049,7 @@ export function showQuickBar() {
 
     // Internal implementation note.
     let realismRow = '';
-    if (isTracked('user') && !p.isPregnant && hasMenstrualCycle(s, 'user') && day <= bleedingDays(s, 'user')) {
+    if (isTracked('user') && !p.isPregnant && !lossCyclePaused('user') && hasMenstrualCycle(s, 'user') && day <= bleedingDays(s, 'user')) {
         const hrs = hoursBetween(p.hygieneChangedRpDate, p.rpDate);
         const hy = getHygieneState(p.hygieneType || 'pad', hrs, getFlow(day, bleedingDays(s, 'user')));
         const opts = Object.values(HYGIENE)
@@ -1363,9 +1366,9 @@ export function syncUI() {
     const cycInfo = el('repro-currentcycle');
     const cycRow = el('repro-cycle-row');
     if (cycInfo) cycInfo.style.display = isTracked('user') ? '' : 'none';
-    if (cycRow) cycRow.style.display = isTracked('user') && hasCycle(s, 'user') && !p.isPregnant && !(getPostpartum(p,p)&&!getPostpartum(p,p).cycleReturned) ? 'flex' : 'none';
+    if (cycRow) cycRow.style.display = isTracked('user') && hasCycle(s, 'user') && !p.isPregnant && !lossCyclePaused('user') && !(getPostpartum(p,p)&&!getPostpartum(p,p).cycleReturned) ? 'flex' : 'none';
     const partnerRow = el('repro-partner-cycle-row');
-    if (partnerRow) partnerRow.style.display = isTracked('char') && hasCycle(s, 'char') && !getPartnerData().isPregnant && !(getPostpartum(getPartnerData(),p)&&!getPostpartum(getPartnerData(),p).cycleReturned) ? '' : 'none';
+    if (partnerRow) partnerRow.style.display = isTracked('char') && hasCycle(s, 'char') && !getPartnerData().isPregnant && !lossCyclePaused('char') && !(getPostpartum(getPartnerData(),p)&&!getPostpartum(getPartnerData(),p).cycleReturned) ? '' : 'none';
     const partnerDay = getPartnerData().cycleDay || 1;
     const partnerInput = el('repro-partner-cycle-day');
     if (partnerInput) { partnerInput.value = partnerDay; partnerInput.max = cycleLength(s, 'char'); }
@@ -1568,6 +1571,26 @@ export function syncUI() {
     const manualWhoSel = el('repro-manual-who');
     if (manualWhoSel && s.trackFor !== 'both') manualWhoSel.value = (s.trackFor === 'char') ? 'char' : 'user';
 
+    const compSource=el('repro-comp-source');
+    if(compSource){compSource.value=s.complicationWarningSource||'plot';compSource.disabled=!canSetChatOptions();}
+    const compNotices=el('repro-comp-notices');
+    if(compNotices){compNotices.checked=s.complicationNotifications!==false;compNotices.disabled=!canSetChatOptions();}
+    const compWho=manualWhoSel?.value==='char'?'char':'user';
+    const compCarrier=compWho==='char'?getPartnerData():p;
+    const compStatus=el('repro-comp-status');
+    if(compStatus){
+        const active=(compCarrier.complications||[]).filter(x=>!x.resolved);
+        const losses=(compCarrier.lossHistory||[]).length;
+        compStatus.textContent=(compCarrier.isPregnant?'Pregnant':'Not pregnant')+
+           ' · '+active.length+' unresolved · '+losses+' recorded loss(es)'+
+           (lossCyclePaused(compWho)?' · cycle recovery pending':'');
+    }
+    for(const kind of ['warning','care','ongoing','resolved','loss','partial']){
+        const button=el('repro-comp-'+kind);
+        if(button)button.disabled=!compCarrier.isPregnant || (kind==='partial'&&(compCarrier.fetusCount||1)<2);
+    }
+    const cycleReturn=el('repro-comp-cycle-return');
+    if(cycleReturn)cycleReturn.disabled=!lossCyclePaused(compWho);
     const manualParent = el('repro-manual-second-parent');
     const manualCarrier = manualWhoSel?.value === 'char' ? getPartnerData() : p;
     if (manualParent && document.activeElement !== manualParent && manualCarrier.isPregnant) manualParent.value = manualCarrier.fatherName || '';
@@ -1980,6 +2003,46 @@ export function setupUI() {
                 <label for="repro-manual-second-parent" style="font-size:11px">Second parent</label>
                 <input type="text" id="repro-manual-second-parent" class="text_pole" maxlength="80" placeholder="Second parent name" title="For the current pregnancy, the name is saved on completion; for a new one, it is saved when starting pregnancy.">
                 <button id="repro-manual-start" class="menu_button" style="width:100%">Start pregnancy</button>
+                <details id="repro-comp-panel" style="border:1px solid var(--SmartThemeBorderColor);border-radius:6px;padding:6px;font-size:11px">
+                    <summary style="cursor:pointer;font-weight:600">Pregnancy complications / recovery</summary>
+                    <label for="repro-comp-source">Warning source (this chat)</label>
+                    <select id="repro-comp-source" class="text_pole" style="width:100%">
+                        <option value="plot">Plot-confirmed only (default)</option>
+                        <option value="plot_scheduled">Plot + scheduled warnings (opt-in)</option>
+                        <option value="manual">Manual warnings only</option>
+                    </select>
+                    <label style="display:flex;gap:6px;align-items:center;margin:5px 0">
+                        <input type="checkbox" id="repro-comp-notices" checked>Show complication notifications
+                    </label>
+                    <div id="repro-comp-status" style="font-size:10px;opacity:.8;margin:5px 0"></div>
+                    <label for="repro-comp-code">Complication</label>
+                    <select id="repro-comp-code" class="text_pole" style="width:100%">
+                        <option value="THREATENED_MISCARRIAGE">Threatened miscarriage</option>
+                        <option value="LOW_PROGESTERONE">Low progesterone</option>
+                        <option value="CERVICAL_INSUFFICIENCY">Cervical insufficiency</option>
+                        <option value="PLACENTA_PREVIA">Placenta previa</option>
+                        <option value="PREECLAMPSIA">Preeclampsia</option>
+                        <option value="ANEMIA">Anemia</option>
+                        <option value="GESTATIONAL_DIABETES">Gestational diabetes</option>
+                        <option value="OTHER">Other pregnancy complication</option>
+                    </select>
+                    <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:5px">
+                        <button type="button" id="repro-comp-warning" class="menu_button" style="flex:1">Warning</button>
+                        <button type="button" id="repro-comp-care" class="menu_button" style="flex:1">Care received</button>
+                        <button type="button" id="repro-comp-ongoing" class="menu_button" style="flex:1">Monitoring</button>
+                        <button type="button" id="repro-comp-resolved" class="menu_button" style="flex:1">Resolved</button>
+                    </div>
+                    <button type="button" id="repro-comp-loss" class="menu_button redWarningBG" style="width:100%;margin-top:6px">Confirm miscarriage (entire pregnancy)</button>
+                    <div style="display:flex;align-items:center;gap:4px;margin-top:5px">
+                        <select id="repro-comp-loss-index" class="text_pole" style="flex:0 0 100px">
+                            <option value="1">Fetus 1</option><option value="2">Fetus 2</option>
+                            <option value="3">Fetus 3</option><option value="4">Fetus 4</option>
+                        </select>
+                        <button type="button" id="repro-comp-partial" class="menu_button" style="flex:1">Confirm partial loss</button>
+                    </div>
+                    <button type="button" id="repro-comp-cycle-return" class="menu_button" style="width:100%;margin-top:5px">Confirm menstrual cycle returned</button>
+                    <small style="display:block;opacity:.7;margin-top:5px">A warning alone never ends pregnancy. Treatment never auto-cures. Confirmed losses remain in RP history, separate from existing babies. Manual changes can be undone.</small>
+                </details>
                 <small style="opacity:0.5;font-size:9px;font-weight:600;margin-top:4px">Baby <span style="font-weight:400;opacity:0.7">(added to existing)</span></small>
                 <div style="display:flex;gap:4px;align-items:center">
                     <input type="text" id="repro-mb-name" class="text_pole" style="flex:1" maxlength="60" placeholder="Name">
@@ -2336,6 +2399,51 @@ export function setupUI() {
             $(this).text(visible ? 'Manual pregnancy / baby ▼' : 'Manual pregnancy / baby ▲');
         });
 
+        // Manual controls update the same per-chat carrier record as RP events.
+        $('#repro-comp-source').on('change',function(){
+            if(warnIfNoChat()||!canSetChatOptions())return;
+            getSettings().complicationWarningSource=this.value;syncUI();updatePromptInjection();
+        });
+        $('#repro-comp-notices').on('change',function(){
+            if(warnIfNoChat()||!canSetChatOptions())return;
+            getSettings().complicationNotifications=!!this.checked;syncUI();
+        });
+        for(const kind of ['warning','care','ongoing','resolved']){
+            $('#repro-comp-'+kind).on('click',function(){
+                if(warnIfNoChat())return;
+                const who=$('#repro-manual-who').val()||'user';
+                const code=$('#repro-comp-code').val()||'THREATENED_MISCARRIAGE';
+                if(recordManualPregnancyEvent({who,kind,code})){
+                    refreshRegenSnapshot();syncUI();updatePromptInjection();
+                }else showNotification('No applicable active pregnancy or unresolved condition','info');
+            });
+        }
+        $('#repro-comp-loss').on('click',function(){
+            if(warnIfNoChat())return;
+            const who=$('#repro-manual-who').val()||'user';
+            const carrier=who==='char'?getPartnerData():getPregnancyData();
+            if(!carrier.isPregnant)return;
+            if(!confirm('CONFIRM pregnancy loss for '+carrierName(who)+'? This ends the current pregnancy.'))return;
+            if(recordManualPregnancyEvent({who,kind:'loss'})){
+                refreshRegenSnapshot();syncUI();updatePromptInjection();
+            }
+        });
+        $('#repro-comp-partial').on('click',function(){
+            if(warnIfNoChat())return;
+            const who=$('#repro-manual-who').val()||'user';
+            const index=Number($('#repro-comp-loss-index').val());
+            const carrier=who==='char'?getPartnerData():getPregnancyData();
+            if(!carrier.isPregnant || (carrier.fetusCount||1)<2 || index>carrier.fetusCount)return;
+            if(!confirm('CONFIRM loss of fetus '+index+' for '+carrierName(who)+'? The other fetus(es) remain tracked.'))return;
+            if(recordManualPregnancyEvent({who,kind:'partial',index})){
+                refreshRegenSnapshot();syncUI();updatePromptInjection();
+            }
+        });
+        $('#repro-comp-cycle-return').on('click',function(){
+            if(warnIfNoChat())return;
+            const who=$('#repro-manual-who').val()||'user';
+            if(resumeLossRecovery(who)){refreshRegenSnapshot();syncUI();updatePromptInjection();}
+        });
         $('#repro-manual-baby-add').on('click', function() {
             if (warnIfNoChat()) return;
             const name = $('#repro-mb-name').val().trim();
@@ -2388,7 +2496,7 @@ export function setupUI() {
             manualDateInput.val(iso);
         }
 
-        $('#repro-manual-who').on('change', () => {
+        $('#repro-manual-who').on('change', () => { syncUI();
             const who = $('#repro-manual-who').val() || 'user';
             $('#repro-manual-second-parent').val((who === 'char' ? getPartnerData() : getPregnancyData()).fatherName || '');
         });

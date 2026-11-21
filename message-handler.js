@@ -285,7 +285,7 @@ function runScan() {
     const freshStatus = scanStatusTag(text);
     if (freshStatus) applyStatusData(s, p, freshStatus);
     const tagResult = scanMessage(text, !!lastMessage.is_user);
-    if(tagResult && plotStillbirth){tagResult.birth_occurred=false;tagResult.char_birth=false;}
+    if(tagResult && (plotStillbirth || /<!--\s*\[STILLBIRTH(?::CHAR)?\]\s*-->/i.test(text))){tagResult.birth_occurred=false;tagResult.char_birth=false;}
     if (tagResult?.birth_occurred && !canTriggerBirth(p, s, 'tag')) tagResult.birth_occurred = false;
     if (tagResult) {
         // Ignore conception tag when already pregnant

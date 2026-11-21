@@ -773,7 +773,7 @@ export async function scanFullHistory() {
             }
             const plotLoss=plotEvents.some(e=>['loss','partial','termination','stillbirth'].includes(e.kind));
             if (tagResult) {
-                if (plotEvents.some(e=>e.kind==='stillbirth')) {
+                if (/<!--\s*\[STILLBIRTH(?::CHAR)?\]\s*-->/i.test(text)) {
                     tagResult.birth_occurred=false;
                     tagResult.char_birth=false;
                 }

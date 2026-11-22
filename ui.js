@@ -43,7 +43,7 @@ import { recordManualContraception, getLastContraceptionEvent } from './contrace
 import { manualContraceptionNotice } from './contraception-notices.js';
 import { contraceptionStatus, activeProtectionMethods } from './contraception-rules.js';
 import { showNotification } from './notifications.js';
-import { recordManualPregnancyEvent, resumeLossRecovery, setLossRecoveryBleeding, lossCyclePaused } from './pregnancy-events.js';
+import { recordManualPregnancyEvent, resumeLossRecovery, setLossRecoveryBleeding, lossCyclePaused, removeIncorrectPregnancyComplication } from './pregnancy-events.js';
 import { CONDITIONS } from './pregnancy-event-guards.js';
 
 function ic(n) { return `<i class="fa-solid ${n}"></i>`; }
@@ -1586,6 +1586,29 @@ export function syncUI() {
            ' · '+active.length+' unresolved · '+losses+' recorded loss(es)'+
            (lossCyclePaused(compWho)?' · cycle recovery pending':'');
     }
+    const invalidSelect=el('repro-comp-remove-select');
+    const invalidButton=el('repro-comp-remove');
+    if(invalidSelect){
+        const selected=invalidSelect.value;
+        invalidSelect.replaceChildren();
+        const warnings=(compCarrier.complications||[])
+            .map((item,index)=>({item,index})).filter(entry=>!entry.item.resolved);
+        for(const {item,index} of warnings){
+            const option=document.createElement('option');
+            option.value=String(index);
+            const origin=item.origin==='manual'?'manual entry'
+                :Number.isSafeInteger(item.sourcePosition)?'RP message #'+item.sourcePosition:'older record';
+            option.textContent=(item.type||'Complication')+' — '+origin;
+            invalidSelect.append(option);
+        }
+        if(!warnings.length){
+            invalidSelect.append(new Option('No active complications',''));
+        }else if(warnings.some(x=>String(x.index)===selected)){
+            invalidSelect.value=selected;
+        }
+        invalidSelect.disabled=!warnings.length;
+        if(invalidButton)invalidButton.disabled=!warnings.length;
+    }
     const compHistory=el('repro-comp-history');
     if(compHistory){
         const warnings=(compCarrier.complications||[]).filter(x=>!x.resolved)
@@ -2032,8 +2055,14 @@ export function setupUI() {
                     </label>
                     <div id="repro-comp-status" style="font-size:10px;opacity:.8;margin:5px 0"></div>
                     <div id="repro-comp-history" style="font-size:10px;opacity:.85;white-space:pre-line;margin-bottom:5px"></div>
+                    <div style="display:flex;gap:5px;flex-direction:column;margin:5px 0 9px">
+                        <label for="repro-comp-remove-select" style="font-size:10px">Incorrect saved complication</label>
+                        <select id="repro-comp-remove-select" class="text_pole" style="width:100%;font-size:10px"></select>
+                        <button type="button" id="repro-comp-remove" class="menu_button" style="width:100%;font-size:10px">Remove incorrect complication</button>
+                    </div>
                     <label for="repro-comp-code">Complication</label>
                     <select id="repro-comp-code" class="text_pole" style="width:100%">
+                        <option value="">Select a complication first</option>
                         <option value="THREATENED_MISCARRIAGE">Threatened miscarriage</option>
                         <option value="LOW_PROGESTERONE">Low progesterone</option>
                         <option value="CERVICAL_INSUFFICIENCY">Cervical insufficiency</option>
@@ -2432,11 +2461,33 @@ export function setupUI() {
             if(warnIfNoChat()||!canSetChatOptions())return;
             getSettings().complicationNotifications=!!this.checked;syncUI();
         });
+        $('#repro-comp-remove').on('click',function(){
+            if(warnIfNoChat())return;
+            const who=$('#repro-manual-who').val()||'user';
+            const selected=$('#repro-comp-remove-select').val();
+            if(selected==null || selected==='')return;
+            const index=Number(selected);
+            const target=who==='char'?getPartnerData():getPregnancyData();
+            const warning=target.complications?.[index];
+            if(!warning || warning.resolved)return;
+            if(!confirm('Remove incorrect complication "'+(warning.type||'Warning')+
+                '" for '+carrierName(who)+'? This erases the false warning, not a real medical resolution. Pregnancy remains unchanged.'))return;
+            if(removeIncorrectPregnancyComplication(who,index)){
+                refreshRegenSnapshot();
+                syncUI();
+                updatePromptInjection();
+                if(getSettings().showNotifications)showNotification('Incorrect complication removed; pregnancy preserved','success');
+            }
+        });
         for(const kind of ['warning','care','ongoing','resolved']){
             $('#repro-comp-'+kind).on('click',function(){
                 if(warnIfNoChat())return;
                 const who=$('#repro-manual-who').val()||'user';
-                const code=$('#repro-comp-code').val()||'THREATENED_MISCARRIAGE';
+                const code=$('#repro-comp-code').val();
+                if(!code){
+                    showNotification('Select a complication first', 'info');
+                    return;
+                }
                 if(recordManualPregnancyEvent({who,kind,code})){
                     refreshRegenSnapshot();syncUI();updatePromptInjection();
                 }else showNotification('No applicable active pregnancy or unresolved condition','info');

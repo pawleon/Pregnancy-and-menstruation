@@ -617,6 +617,10 @@ export async function scanFullHistory() {
         weightGain: p.weightGain, babyActivity: p.babyActivity,
     }) : null;
     const savedPartner = p.partner ? structuredClone(p.partner) : null;
+    // Keep explicit false-warning corrections across a full history rebuild.
+    // Otherwise old model output would resurrect a warning the user removed.
+    const savedDismissedUser = structuredClone(p.dismissedPregnancyWarnings || []);
+    const savedDismissedPartner = structuredClone(p.partner?.dismissedPregnancyWarnings || []);
     const savedLossHistory = Array.isArray(p.lossHistory) ? structuredClone(p.lossHistory) : [];
     const savedLossRecovery = p.lossRecovery ? structuredClone(p.lossRecovery) : null;
     const savedCompEvents = Array.isArray(p.complicationEvents) ? structuredClone(p.complicationEvents) : [];
@@ -648,6 +652,8 @@ export async function scanFullHistory() {
     // Reconstruct recovery at the correct RP event, not before scanning past dates.
     p.lossRecovery = null;
     p.complicationEvents = savedCompEvents;
+    p.dismissedPregnancyWarnings = savedDismissedUser;
+    getPartnerData().dismissedPregnancyWarnings = savedDismissedPartner;
     // Internal implementation note.
     setCycleDay(14, false);
 
@@ -766,7 +772,7 @@ export async function scanFullHistory() {
             });
             for(const event of plotEvents){
                 if(event.kind==='warning' && s.complicationWarningSource==='manual')continue;
-                if(applyPregnancyPlotEvent(event,{silent:true}) &&
+                if(applyPregnancyPlotEvent(event,{silent:true,sourcePosition:i+1}) &&
                     (['loss','partial','stillbirth','termination'].includes(event.kind))){
                     stats[event.who==='char'?'charLosses':'userLosses']++;
                 }

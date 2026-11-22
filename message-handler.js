@@ -270,7 +270,7 @@ function runScan() {
         trackFor:s.trackFor,userName:carrierName('user'),charName:carrierName('char')
     })){
         if(event.kind==='warning' && s.complicationWarningSource==='manual')continue;
-        if(applyPregnancyPlotEvent(event)){
+        if(applyPregnancyPlotEvent(event,{sourcePosition:positionId})){
             plotChanged=true;
             if(event.kind==='stillbirth')plotStillbirth=true;
         }

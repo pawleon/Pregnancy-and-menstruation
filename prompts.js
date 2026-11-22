@@ -105,7 +105,10 @@ function pregnancyBlock(who, s, p) {
     if (!known) b += 'Pregnancy facts are private simulation data until the scene establishes discovery.\n';
     b += 'Do not invent multiples, delivery, fetal traits, or discoveries. Due date alone is not birth.\n';
     if (duration !== 40) b += `Development scale=${pct}% of configured term.\n`;
-    if (c.complications?.length) b += `Complications=${c.complications.filter(x => !x.resolved).map(x => x.type).join(', ')}.\n`;
+    const activeComplications=(c.complications||[]).filter(x=>!x.resolved);
+    b += activeComplications.length
+        ? `Complications=${activeComplications.map(x=>x.type).join(', ')}.\n`
+        : 'Complications=none confirmed. Unverified or previously corrected warnings are not established diagnoses.\n';
     b += `Completed delivery only: <!-- [BIRTH${suffix}] --> and <!-- [BABY_TRAITS:{"babies":[{"name":"","fatherName":"","personality":[],"appearance":[]}]}] -->.\n`;
     b += 'Use pregnancy status fields only when relevant: libido, weight_gain, baby_activity, movements, swelling, braxton_hicks, fetal_position, recommendations.\n';
     if (!c.fetusSexRevealed) b += `If a medical reveal occurs: <!-- [SEX_REVEAL${suffix}] -->.\n`;

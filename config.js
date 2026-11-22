@@ -85,6 +85,8 @@ export const defaultPregnancyData = {
     complications: [],
     _plannedComplications: [],
     complicationEvents: [],
+    // Per-carrier corrections, scoped to older RP messages only.
+    dismissedPregnancyWarnings: [],
     lossHistory: [],
     lossRecovery: null,
     healthStatus: 'normal',
@@ -155,6 +157,8 @@ export const defaultPartnerData = {
     complications: [],
     _plannedComplications: [],
     complicationEvents: [],
+    // Per-carrier corrections, scoped to older RP messages only.
+    dismissedPregnancyWarnings: [],
     lossHistory: [],
     lossRecovery: null,
     healthStatus: 'normal',

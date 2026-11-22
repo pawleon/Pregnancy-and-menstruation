@@ -29,7 +29,7 @@ function log(c,item){
  c.complicationEvents.push({rpDate:date(),...item});
  c.complicationEvents=c.complicationEvents.slice(-150);
 }
-export function applyPregnancyPlotEvent(event,{manual=false,silent=false}={}){
+export function applyPregnancyPlotEvent(event,{manual=false,silent=false,sourcePosition=null}={}){
  if(!event||!['user','char'].includes(event.who)||!isTracked(event.who))return false;
  const c=carrier(event.who),s=getSettings(),k=event.kind,def=CONDITIONS[event.code];
  if(!c.isPregnant||!['warning','care','ongoing','resolved','loss','partial','termination','stillbirth'].includes(k))return false;
@@ -37,13 +37,22 @@ export function applyPregnancyPlotEvent(event,{manual=false,silent=false}={}){
  if(k==='partial'&&(!Number.isInteger(event.index)||event.index<1||event.index>(c.fetusCount||1)||c.fetusCount<2))return false;
  const comp=def?active(c,event.code):null;
  if(k==='warning'&&comp)return false;
+ // A corrected false warning must not reappear when old messages are rescanned.
+ // The cutoff is this chat's message count at the time of manual correction:
+ // later genuine diagnoses remain eligible.
+ if(k==='warning'&&!manual&&Number.isSafeInteger(sourcePosition) && sourcePosition>0 &&
+    (c.dismissedPregnancyWarnings||[]).some(item=>item.code===event.code &&
+      Number.isSafeInteger(item.throughPosition) && sourcePosition<=item.throughPosition))
+   return false;
  if(['care','ongoing','resolved'].includes(k)&&!comp)return false;
  if(manual)createUndoCheckpoint('Pregnancy '+k);
  if(k==='warning'){
    c.complications||=[];
    c.complications.push({code:event.code,type:def.label,severity:def.severity,
-     week:c.pregnancyWeeks||0,rpDate:date(),resolved:false,status:'warning',care:[]});
-   log(c,{kind:k,code:event.code});
+     week:c.pregnancyWeeks||0,rpDate:date(),resolved:false,status:'warning',care:[],
+     origin:manual?'manual':'rp', sourcePosition:manual?null:(Number.isSafeInteger(sourcePosition)?sourcePosition:null)});
+   log(c,{kind:k,code:event.code,origin:manual?'manual':'rp',
+     sourcePosition:manual?null:(Number.isSafeInteger(sourcePosition)?sourcePosition:null)});
    notify(event.who,def.label+' — warning only; pregnancy continues',k,silent);
  }else if(['care','ongoing','resolved'].includes(k)){
    comp.care||=[];comp.care.push({kind:k,rpDate:date()});
@@ -106,5 +115,39 @@ export function resumeLossRecovery(who){
  createUndoCheckpoint('Cycle return after pregnancy loss');
  c.lossRecovery.cycleResumed=true;saveSettingsDebounced();
  notify(who,'Cycle return confirmed after pregnancy loss','resolved',false);
+ return true;
+}
+
+
+/**
+ * Erase an incorrectly recorded complication, not a real condition's resolution.
+ * Does not affect pregnancy dating, parentage, fetal state, or loss records.
+ */
+export function removeIncorrectPregnancyComplication(who,index){
+ if(!['user','char'].includes(who)||!isTracked(who)||!Number.isSafeInteger(index)||index<0)return false;
+ const c=carrier(who);
+ if(!c.isPregnant||!Array.isArray(c.complications))return false;
+ const target=c.complications[index];
+ if(!target||target.resolved)return false;
+ createUndoCheckpoint('Remove incorrect pregnancy complication');
+ const code=target.code || Object.entries(CONDITIONS).find(([,def])=>
+   String(def.label).toLowerCase()===String(target.type||'').toLowerCase())?.[0] || null;
+ const chatLength=(() => {try{
+   return SillyTavern.getContext()?.chat?.length || 0;
+ }catch{return 0;}})();
+ if(code && Number.isSafeInteger(chatLength) && chatLength>0){
+   c.dismissedPregnancyWarnings ||= [];
+   // Keep the exclusion limited to already existing RP messages. A new,
+   // genuinely confirmed diagnosis in a later message can be accepted.
+   const found=c.dismissedPregnancyWarnings.find(item=>item.code===code);
+   if(found) found.throughPosition=Math.max(found.throughPosition||0,chatLength);
+   else c.dismissedPregnancyWarnings.push({code,throughPosition:chatLength});
+   c.dismissedPregnancyWarnings=c.dismissedPregnancyWarnings.slice(-30);
+ }
+ c.complications.splice(index,1);
+ log(c,{kind:'invalidated-warning',code,origin:'manual-correction',
+   sourcePosition:target.sourcePosition??null});
+ recalc(c);
+ saveSettingsDebounced();
  return true;
 }

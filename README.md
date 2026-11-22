@@ -249,3 +249,18 @@ node --experimental-default-type=module --test tests/pregnancy-event-guards.test
 ```
 
 **Safety notes:** This is a fictional RP state tracker, not a diagnostic or prevention model. It does not simulate real miscarriage risks or imply that medical care guarantees prevention of pregnancy loss. The parser favors missed triggers over false-positive termination; manual actions are provided as fallbacks. Existing chat data is retained and missing new fields are initialized without deleting old records.
+
+## v3.22.1 — False pregnancy-warning repair (November 2026)
+
+**Existing pregnancies are not reset or re-dated by this update.** Obstetric gestational weeks, hidden-pregnancy knowledge, conception timestamps, parent and fetal records, and unrelated couples remain unchanged. Previously saved warnings remain until explicitly corrected.
+
+- **Plot warning validation:** An RP marker is still required, but new plot warnings also require a positive clinical diagnosis naming the correct patient. Possible risks, other patients, hypothesized or recalled diagnoses, and markers inside reasoning or code do not establish a complication.
+- **Source audit:** New complication warnings record whether they came from a manual action or an RP message, plus the message position when known. Older records are displayed as older records rather than assigned an invented origin.
+- **Correct false warning:** Open **Manual pregnancy / baby → Pregnancy complications / recovery**. Under **Incorrect saved complication**, select the active record, then press **Remove incorrect complication** and confirm. This removes only the mistaken warning and recalculates health from the remaining active conditions. It never ends or re-dates the pregnancy.
+- **Rescan protection:** Per-chat correction exclusions stop past RP messages from recreating a removed false warning during a full history rescan. Later genuinely diagnosed conditions can still be added, and manual conditions remain available. A correction audit entry is kept.
+- **Safer manual selection:** The manual complication dropdown begins at **Select a complication first**; actions cannot default silently to threatened miscarriage.
+- **Prompt cleanup:** When no active complications remain, the prompt says `Complications=none confirmed`, so previous speculative warnings are not treated as current diagnoses. Old chat messages themselves are not rewritten.
+
+Regression tests: `node --experimental-default-type=module --test tests/pregnancy-event-guards.test.mjs tests/pregnancy-complication-corrections.test.mjs`
+
+Automated tests cover parsing, false-positive rejection, manual correction, per-carrier isolation, obstetric-date preservation, and rescan suppression. Live SillyTavern validation is still needed for legacy chat metadata.

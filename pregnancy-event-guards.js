@@ -13,7 +13,7 @@ const SPECIAL= /<!--\s*\[(ABORTION|STILLBIRTH)(?::(CHAR))?\]\s*-->/gi;
 const TERMINATION=/\b(?:underwent an abortion|had an abortion|abortion was performed|completed the abortion|pregnancy was terminated|termination was completed)\b/i;
 const STILLBORN=/\b(?:was stillborn|were stillborn|stillborn (?:baby|child|twin)|stillbirth (?:was|has been) confirmed|confirmed (?:the |a )?stillbirth)\b/i;
 const TAG=/<!--\s*\[(?:PREG_EVENT:(USER|CHAR):(WARNING|CARE|ONGOING|RESOLVED):([A-Z_]+)|(MISCARRIAGE)(?::(CHAR))?|PREG_LOSS:(USER|CHAR):([1-4]))\]\s*-->/gi;
-const UNCERTAIN=/\b(?:might|may|could|would|should|possibly|possible|risk of|fear(?:s|ed|ing)?|worri(?:es|ed)|suspect(?:s|ed)?|if|whether|hypothetical(?:ly)?|what if|dream(?:ed|t)?|nightmare|flashback|remember(?:ed|s)?|recalled|previously|years ago|last year|in the past|before this pregnancy|not|never|didn't|doesn't|hasn't|wasn't|ruled out|false alarm|scare|plan(?:ned|ning)?|discussed)\b/i;
+const UNCERTAIN=/\b(?:might|may|could|would|should|possibly|possible|risk of|potential(?:ly)?|chance of|a concern|monitor for|screen for|rule out|fear(?:s|ed|ing)?|worri(?:es|ed)|suspect(?:s|ed)?|if|whether|hypothetical(?:ly)?|what if|dream(?:ed|t)?|nightmare|flashback|remember(?:ed|s)?|recalled|previously|years ago|last year|in the past|before this pregnancy|not|never|didn't|doesn't|hasn't|wasn't|ruled out|false alarm|scare|plan(?:ned|ning)?|discussed)\b/i;
 const THIRD=/\b(?:her sister|his sister|their sister|her friend|his friend|their friend|her mother|his mother|neighbor|neighbour|other patient|another woman|someone else|aunt|stranger|coworker|another character)\b/i;
 const CLINICAL=/\b(?:doctor|physician|midwife|obstetrician|ultrasound|scan|hospital|clinic|exam(?:ination)?|diagnos(?:ed|is)|medical team)\b/i;
 const CONFIRMED=/\b(?:diagnos(?:ed|is)|confirmed|found|revealed|identified|determined|showed|warned|assessment|examination)\b/i;
@@ -23,7 +23,14 @@ const RESOLVED=/\b(?:resolved|cleared|no longer (?:present|at risk)|fully recove
 const LOST=/\b(?:miscarried|confirmed (?:a |the )?miscarriage|miscarriage (?:was|is|has been) confirmed|diagnosed (?:a |the )?miscarriage|(?:doctor|ultrasound|scan|hospital).{0,85}(?:no fetal heartbeat|fetal demise|non[- ]?viable pregnancy|pregnancy (?:had |has )?ended)|pregnancy loss was confirmed)\b/i;
 const REASSURED=/\b(?:remaining|surviving|other|second|first)\s+(?:baby|fetus|foetus|twin).{0,90}\b(?:survived|alive|healthy|heartbeat|continues|developing)\b/i;
 function plain(raw){return String(raw||'').replace(/<(?:think|thinking|reasoning)>[\s\S]*?<\/(?:think|thinking|reasoning)>/gi,'').replace(/<!--[\s\S]*?-->/g,'').replace(/\[OOC[^\]]*\]/gi,'');}
-function named(c,n){const s=String(n||'').trim().toLowerCase();return s.length>=2&&c.toLowerCase().includes(s);}
+function named(c,n){
+ const parts=String(n||'').trim().split(/\s+/).filter(Boolean);
+ if(!parts.length)return false;
+ const variants=[parts.join(' ')];
+ if(parts[0].length>=2)variants.push(parts[0]);
+ const escape=x=>x.replace(/[.*+?^\x24{}()|[\]\\]/g,'\\$&');
+ return new RegExp('\\b(?:'+[...new Set(variants)].map(escape).join('|')+')\\b','i').test(c);
+}
 function owns(c,who,o){
  if(THIRD.test(c))return false;
  const mine=named(c,who==='char'?o.charName:o.userName)||c.toLowerCase().includes(who==='char'?'{{char}}':'{{user}}');
@@ -31,19 +38,43 @@ function owns(c,who,o){
  if(other)return false;
  return o.trackFor==='both'?mine:true;
 }
-function valid(c,kind,code){
+// A positive clinical diagnosis must name its patient; risks do not count.
+function clinicalDiagnosis(c,code,who,o){
+ const condition=CONDITIONS[code];
+ if(!condition||!CLINICAL.test(c)||UNCERTAIN.test(c))return false;
+ const name=String(who==='char'?o.charName:o.userName||'').trim();
+ if(!name)return false;
+ const parts=name.split(/\s+/).filter(Boolean);
+ const escape=x=>x.replace(/[.*+?^\x24{}()|[\]\\]/g,'\\$&');
+ const variants=[parts.join(' ')];
+ if(parts[0]?.length>=2)variants.push(parts[0]);
+ const owner='(?:'+[...new Set(variants)].map(escape).join('|')+'|\\{\\{'+who+'\\}\\})';
+ const cond=condition.term.source;
+ const patterns=[
+  '\\bdiagnos(?:ed|is)\\s+'+owner+'\\s+(?:with|as having)\\s+(?:an?\\s+)?'+cond,
+  '\\b'+owner+'\\s+(?:was|has been|is)\\s+diagnos(?:ed|is)\\s+with\\s+(?:an?\\s+)?'+cond,
+  '\\bconfirm(?:ed|s)\\s+(?:that\\s+)?'+owner+'\\s+(?:has|had|was diagnosed with|is suffering from)\\s+(?:an?\\s+)?'+cond,
+  '\\b(?:an?\\s+)?'+cond+'\\s+(?:was|has been)\\s+(?:clinically\\s+)?(?:confirmed|diagnosed|found)\\s+(?:in|for)\\s+'+owner,
+  '\\b(?:scan|ultrasound|examination)\\s+(?:confirmed|revealed|showed)\\s+'+owner+'\\s+(?:has|had)\\s+(?:an?\\s+)?'+cond
+ ];
+ return patterns.some(pattern=>new RegExp(pattern,'i').test(c));
+}
+function valid(c,kind,code,who,o){
  if(UNCERTAIN.test(c))return false;
  if(kind==='loss'||kind==='partial')return LOST.test(c);
  const cond=CONDITIONS[code];
  if(!cond?.term.test(c))return false;
- if(kind==='warning')return CLINICAL.test(c)&&CONFIRMED.test(c);
+ if(kind==='warning')return clinicalDiagnosis(c,code,who,o);
  if(kind==='care')return CLINICAL.test(c)&&CARE.test(c);
  if(kind==='ongoing')return CLINICAL.test(c)&&ONGOING.test(c);
  if(kind==='resolved')return CLINICAL.test(c)&&CONFIRMED.test(c)&&RESOLVED.test(c);
  return false;
 }
 export function parsePregnancyPlotEvents(raw,options={}){
- const source=String(raw||'').replace(/\x60{3}[\s\S]*?\x60{3}/g,'');
+ const source=String(raw||'')
+   .replace(/\x60{3}[\s\S]*?\x60{3}/g,'')
+   .replace(/<(think|thinking|reasoning|analysis|reflection)(?:\s[^>]*)?>[\s\S]*?<\/\1>/gi,'')
+   .replace(/<(think|thinking|reasoning|analysis|reflection)(?:\s[^>]*)?>[\s\S]*$/gi,'');
  const sentences=plain(source).split(/[\n.!?]+/).map(s=>s.trim()).filter(s=>s.length>5&&s.length<600);
  const out=[],seen=new Set(); TAG.lastIndex=0;
  for(const m of source.matchAll(TAG)){
@@ -52,7 +83,7 @@ export function parsePregnancyPlotEvents(raw,options={}){
    const code=m[3]||null, index=kind==='partial'?Number(m[7]):null;
    if(!['user','char','both'].includes(options.trackFor)||(options.trackFor!=='both'&&who!==options.trackFor))continue;
    if(code&&!CONDITIONS[code])continue;
-   const matches=sentences.filter(c=>owns(c,who,options)&&valid(c,kind,code));
+   const matches=sentences.filter(c=>owns(c,who,options)&&valid(c,kind,code,who,options));
    if(!matches.length)continue;
    if(kind==='partial'){
      const ordinal=['','first','second','third','fourth'][index];

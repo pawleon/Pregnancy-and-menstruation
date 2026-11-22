@@ -21,6 +21,16 @@ const cases=[
  ['both carriers: anonymous not attributed','The doctor confirmed she miscarried. <!-- [MISCARRIAGE] -->',both,''],
  ['negation','The doctor confirmed Elena did not miscarry. <!-- [MISCARRIAGE] -->',both,''],
  ['plot warning','The doctor diagnosed Elena with a threatened miscarriage. <!-- [PREG_EVENT:USER:WARNING:THREATENED_MISCARRIAGE] -->',both,'user:warning'],
+
+ ['confirmed passive diagnosis','Elena was diagnosed with threatened miscarriage by her doctor. <!-- [PREG_EVENT:USER:WARNING:THREATENED_MISCARRIAGE] -->',both,'user:warning'],
+ ['possible condition is not diagnosis','The doctor warned Elena that threatened miscarriage was a potential concern. <!-- [PREG_EVENT:USER:WARNING:THREATENED_MISCARRIAGE] -->',both,''],
+ ['doctor warning is not diagnosis','The doctor warned Elena about threatened miscarriage. <!-- [PREG_EVENT:USER:WARNING:THREATENED_MISCARRIAGE] -->',both,''],
+ ['an unrelated patient is not Elena','The doctor diagnosed Margaret with threatened miscarriage. <!-- [PREG_EVENT:USER:WARNING:THREATENED_MISCARRIAGE] -->',single,''],
+ ['unrelated patient with Elena present','Elena watched the doctor diagnose Margaret with threatened miscarriage. <!-- [PREG_EVENT:USER:WARNING:THREATENED_MISCARRIAGE] -->',single,''],
+ ['no diagnosis while pregnancy still private','Elena is two weeks pregnant but does not know yet. <!-- [PREG_EVENT:USER:WARNING:THREATENED_MISCARRIAGE] -->',single,''],
+ ['marker inside hidden reasoning ignored','<think><!-- [PREG_EVENT:USER:WARNING:THREATENED_MISCARRIAGE] --></think> The doctor diagnosed Elena with threatened miscarriage.',both,''],
+ ['marker inside fenced code ignored','The doctor diagnosed Elena with threatened miscarriage. \x60\x60\x60html\n<!-- [PREG_EVENT:USER:WARNING:THREATENED_MISCARRIAGE] -->\n\x60\x60\x60',both,''],
+
  ['miscarriage scare is not warning','Elena feared threatened miscarriage after her fall. <!-- [PREG_EVENT:USER:WARNING:THREATENED_MISCARRIAGE] -->',both,''],
  ['care recorded','Elena underwent an ultrasound at the hospital for threatened miscarriage. <!-- [PREG_EVENT:USER:CARE:THREATENED_MISCARRIAGE] -->',both,'user:care'],
  ['care not resolution','Elena underwent an ultrasound for threatened miscarriage. <!-- [PREG_EVENT:USER:RESOLVED:THREATENED_MISCARRIAGE] -->',both,''],

@@ -1131,8 +1131,34 @@ export function prepareGeneration(genType, dryRun = false) {
 export function setManualCycleDay(who, day) {
     if (!['user','char'].includes(who)) return false;
     const p = getPregnancyData(), c = who === 'char' ? getPartnerData() : p;
-    if (c.isPregnant) return false;
     const value = Math.max(1, Math.min(cycleLength(getSettings(), who), parseInt(day) || 1));
+    if (c.isPregnant) {
+        // The actual menstrual cycle remains paused. A manual correction
+        // adjusts ONLY the scene-based display and persists per chat.
+        // Prefer the latest explicit saved RP tag over a stale RP clock.
+        let anchor = p.rpDate || null;
+        const chat = typeof SillyTavern?.getContext === 'function' ? SillyTavern.getContext()?.chat : null;
+        if (Array.isArray(chat)) {
+            for (let i = chat.length - 1; i >= Math.max(0, chat.length - 64); i--) {
+                const msg = chat[i];
+                if (!msg || msg.is_system) continue;
+                const rpTag = scanDateTag(stripThink(rawTextOf(msg)));
+                if (rpTag) {
+                    anchor = rpTag.toISOString();
+                    break;
+                }
+            }
+        }
+        c._pregnancySceneDayManual = { day: value, atRpDate: anchor, conceptionDate: c.conceptionDate || null };
+        c._userSetCycleAt = Date.now();
+        refreshRegenSnapshot();
+        saveSettingsDebounced();
+        updatePromptInjection();
+        syncUI();
+        renderInfoblock();
+        return value;
+    }
+    delete c._pregnancySceneDayManual;
     c.cycleDay = value;
     c._cycleShift = 0;
     c._dynamic = {};

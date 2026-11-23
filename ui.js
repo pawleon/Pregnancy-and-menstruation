@@ -4,13 +4,29 @@ import { reportError } from './diagnostics.js';
 // Scene-based day display follows RP calendar transitions, not 24-hour
 // elapsed time. The actual menstrual cycle remains frozen during pregnancy.
 // Keep pregnancy-test and gestational calculations on their existing clocks.
-function sceneCalendarDaysSinceConception(carrier, root) {
-    if (!carrier?.conceptionDate || !root?.rpDate) return 0;
-    const conception = new Date(carrier.conceptionDate);
-    const scene = new Date(root.rpDate);
-    if (!Number.isFinite(conception.getTime()) || !Number.isFinite(scene.getTime())) return 0;
+function sceneCalendarDayDelta(startIso, endIso) {
+    if (!startIso || !endIso) return 0;
+    const start = new Date(startIso);
+    const end = new Date(endIso);
+    if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) return 0;
     const calendarDay = d => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000;
-    return Math.max(0, calendarDay(scene) - calendarDay(conception));
+    return Math.max(0, calendarDay(end) - calendarDay(start));
+}
+// This is only a presentation counter, never a menstrual-cycle mutation.
+function sceneCalendarDaysSinceConception(carrier, root) {
+    return sceneCalendarDayDelta(carrier?.conceptionDate, root?.rpDate);
+}
+function sceneDisplayDay(who, carrier, root) {
+    const frozen = who === 'char' ? Math.max(1, carrier.cycleDay || 1) : getCycleDay();
+    if (!carrier.isPregnant) return frozen;
+    const manual = carrier._pregnancySceneDayManual;
+    // Manual corrections are scoped to this exact pregnancy, not reused for
+    // a later conception, and progress with subsequent RP calendar days.
+    if (manual && manual.conceptionDate === carrier.conceptionDate &&
+        Number.isFinite(manual.day) && manual.day >= 1) {
+        return manual.day + sceneCalendarDayDelta(manual.atRpDate, root?.rpDate);
+    }
+    return frozen + sceneCalendarDaysSinceConception(carrier, root);
 }
 function cycleSummary(who, c, s) {
     if (lossCyclePaused(who)) return 'Cycle paused — recovery after pregnancy loss';
@@ -19,7 +35,7 @@ function cycleSummary(who, c, s) {
     const pp = getPostpartum(c, getPregnancyData());
     if (pp && !pp.cycleReturned) return 'Cycle paused — postpartum';
     if (lossCyclePaused(who)) return 'Cycle paused — recovery after pregnancy loss';
-    const day = (who === 'char' ? (c.cycleDay || 1) : getCycleDay()) + (c.isPregnant ? sceneCalendarDaysSinceConception(c, getPregnancyData()) : 0);
+    const day = sceneDisplayDay(who, c, getPregnancyData());
     const length = cycleLength(s, who);
     // A pregnant carrier's menstrual cycle is paused, not the scene-day display.
     if (c.isPregnant) return `Day ${day}/${length} · scene-based status`;
@@ -636,8 +652,7 @@ function cycleCardHtml(who, c, tr) {
     // Presentation-only: elapsed RP days are added irrespective of whether
     // the character knows they are pregnant; c.cycleDay remains unchanged.
     const pregnant = !!c.isPregnant;
-    const frozenDay = who === 'char' ? Math.max(1, c.cycleDay || 1) : getCycleDay();
-    const rawDay = frozenDay + (pregnant ? sceneCalendarDaysSinceConception(c, p0) : 0);
+    const rawDay = sceneDisplayDay(who, c, p0);
     const len = cycleLength(s, who), bleed = bleedingDays(s, who);
     const day = Math.max(1, Math.min(len, rawDay));
     const method = getContraception(who);
@@ -1061,7 +1076,7 @@ export function showQuickBar() {
     }
     const statusHtml = rows.join('<br>');
 
-    const day = getCycleDay();
+    const day = p.isPregnant ? sceneDisplayDay('user', p, p) : getCycleDay();
 
     // Internal implementation note.
     let realismRow = '';
@@ -1088,7 +1103,7 @@ export function showQuickBar() {
             <div class="rp-quick-body">
                 <div class="rp-quick-status">${statusHtml}</div>
                 ${(!isTracked('user')) ? '' : `<div class="rp-quick-cycle">
-                    <span class="rp-quick-lbl">Cycle day</span>
+                    <span class="rp-quick-lbl">${p.isPregnant ? 'Scene-based day' : 'Cycle day'}</span>
                     <button class="rp-quick-step" data-d="-1"><i class="fa-solid fa-minus"></i></button>
                     <input type="number" id="rp-quick-cycleday" min="1" max="${cycleLength(s, 'user')}" value="${day}" class="text_pole">
                     <button class="rp-quick-step" data-d="1"><i class="fa-solid fa-plus"></i></button>
@@ -1143,14 +1158,20 @@ export function showQuickBar() {
 
     const applyCycle = (v) => {
         v = Math.max(1, Math.min(cycleLength(getSettings(), 'user'), parseInt(v) || 1));
-        overlay.find('#rp-quick-cycleday').val(v);
-        setManualCycleDay('user', v);
+        const saved = setManualCycleDay('user', v);
+        if (saved === false) {
+            overlay.find('#rp-quick-cycleday').val(getPregnancyData().isPregnant
+                ? sceneDisplayDay('user', getPregnancyData(), getPregnancyData()) : getCycleDay());
+            showNotification('Cycle day was not saved', 'warning');
+            return;
+        }
+        overlay.find('#rp-quick-cycleday').val(saved);
         saveSettingsDebounced();
-        setTimeout(() => { updatePromptInjection(); syncUI(); }, 30);
-        // Internal implementation note.
-        const ph = getPhaseInfo(v);
-        overlay.find('.rp-quick-status').html(`Cycle day ${v}/${cycleLength(getSettings(), 'user')} · <span style="color:${ph.color}">${ph.name}</span>`);
-        showNotification(`Cycle day: ${v}`, 'success');
+        setTimeout(() => { updatePromptInjection(); syncUI(); import('./message-handler.js').then(m => m.renderInfoblock()); }, 30);
+        const label = getPregnancyData().isPregnant ? 'Scene-based day' : 'Cycle day';
+        const phase = getPregnancyData().isPregnant ? 'menstrual cycle paused' : getPhaseInfo(saved).name;
+        overlay.find('.rp-quick-status').text(`${label} ${saved}/${cycleLength(getSettings(), 'user')} · ${phase}`);
+        showNotification(`${label}: ${saved}`, 'success');
     };
     overlay.find('.rp-quick-step').on('click', function() {
         const cur = parseInt(overlay.find('#rp-quick-cycleday').val()) || 1;
@@ -2430,11 +2451,15 @@ export function setupUI() {
         const applyManualCycle = (v) => {
             if (warnIfNoChat()) return;
             v = Math.max(1, Math.min(cycleLength(getSettings(), 'user'), parseInt(v) || 14));
-            $('#repro-cycleday').val(v);
-            setManualCycleDay('user', v);
-
+            const saved = setManualCycleDay('user', v);
+            if (saved === false) {
+                $('#repro-cycleday').val(getCycleDay());
+                showNotification('Cycle day was not saved', 'warning');
+                return;
+            }
+            $('#repro-cycleday').val(saved);
             saveSettingsDebounced();
-            setTimeout(() => { updatePromptInjection(); syncUI(); }, 50);
+            setTimeout(() => { updatePromptInjection(); syncUI(); import('./message-handler.js').then(m => m.renderInfoblock()); }, 50);
         };
         $('#repro-setcycle').on('click', function() {
             applyManualCycle($('#repro-cycleday').val());

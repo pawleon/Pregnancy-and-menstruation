@@ -279,3 +279,8 @@ When the model's final RP_DATE tag arrives after the first streaming message sca
 ## v3.22.4 — RP calendar-day display and restart reconciliation
 
 Pregnant scene-day badges now use **RP calendar-day transitions**, not completed 24-hour periods since the conception timestamp. The frozen menstrual day is not changed; the same calculation is used in the infoblock and settings summary. On chat load/startup, an existing tracked chat now reconciles its saved RP clock against the most recent explicit `RP_DATE` tag (up to the last 64 messages), without regenerating a reply, replaying reproductive events, or revealing pregnancy. Repeated dates are deduplicated; older dated messages never rewind the saved clock during the reconciliation. Same-day date edits are persisted and repainted. Pregnancy calculation and gestational weeks use their existing logic.
+
+
+## v3.22.5 — Save manual pregnancy scene day safely
+
+Fixes the quick Cycle day editor falsely showing success while `setManualCycleDay` silently returned false for pregnant carriers. During pregnancy, an explicit manual correction now persists a **separate per-chat scene-day display anchor**, with the latest saved RP_DATE used to avoid a stale timestamp. It never changes the frozen menstrual day, pregnancy discovery, conception date, fetuses, weeks, or fertility state. The scene-day anchor continues advancing with later RP calendar dates and applies only to the same conception. The quick panel labels the field **Scene-based day**, uses the live scene number as its initial value, updates the infoblock immediately, and no longer reports success when a save fails.

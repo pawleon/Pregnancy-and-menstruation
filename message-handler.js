@@ -1207,7 +1207,7 @@ export function processDateTag(text) {
 
     // Same date as last stored? Skip
     const newIso = rpDate.toISOString();
-    if (p._lastRpDateTag === newIso) return false;
+    if (p._lastRpDateTag === newIso && p.rpDate === newIso) return false;
 
     p._lastRpDateTag = newIso;
     p.rpDate = newIso;
@@ -1256,10 +1256,22 @@ export function processDateTag(text) {
             updatePromptInjection();
             setTimeout(renderInfoblock, 500);
             return true;
+        } else if (diffDays === 0) {
+            // Same-day edits or late RP clocks must persist and repaint too.
+            saveSettingsDebounced();
+            syncUI();
+            updatePromptInjection();
+            setTimeout(renderInfoblock, 300);
+            return true;
         } else if (diffDays < 0) {
+            // Rewinds are handled by swipe/rollback, not by advancing cycles.
         }
     } else {
         saveSettingsDebounced();
+        syncUI();
+        updatePromptInjection();
+        setTimeout(renderInfoblock, 300);
+        return true;
     }
     return false;
 }

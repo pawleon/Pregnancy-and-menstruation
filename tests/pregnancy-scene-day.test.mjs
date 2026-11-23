@@ -6,12 +6,16 @@ const a=source.indexOf('function cycleCardHtml(');
 const b=source.indexOf('\n// Internal implementation note.\nfunction formatAgeStr(',a);
 assert.ok(a>=0&&b>a,'cycle card function found');
 const card=source.slice(a,b);
+const helperStart=source.indexOf('function sceneCalendarDaysSinceConception(');
+const helperEnd=source.indexOf('\nfunction cycleSummary(',helperStart);
+assert.ok(helperStart>=0 && helperEnd>helperStart);
+const sceneCalendarDaysSinceConception=new Function(source.slice(helperStart,helperEnd)+'\nreturn sceneCalendarDaysSinceConception;')();
 const rpTime={value:'2026-11-16T08:24:00Z'};
 const mocks={
  getSettings:()=>({tryingToConceive:true}),
  getPregnancyData:()=>({rpDate:rpTime.value}),
  getCycleDay:()=>8,
- daysSinceConception:(c,p)=>Math.max(0,Math.floor((new Date(p.rpDate)-new Date(c.conceptionDate))/86400000)),
+ sceneCalendarDaysSinceConception,
  cycleLength:()=>28,bleedingDays:()=>5,
  getContraception:()=>null,getContraceptionDetails:()=>({}),contraceptionStatus:()=>({active:false}),
  getPhaseInfo:()=>({name:'Ovulation'}),
@@ -26,9 +30,9 @@ const mocks={
 };
 const keys=Object.keys(mocks);
 const render=new Function(...keys,card+'\nreturn cycleCardHtml;')(...Object.values(mocks));
-function sample({pregnant=true,known=true,who='user',frozenDay=8}={}){
+function sample({pregnant=true,known=true,who='user',frozenDay=8,conception='2026-11-15T00:00:00Z'}={}){
  const carrier={isPregnant:pregnant,pregnancyKnown:known,
-   cycleDay:frozenDay,conceptionDate:'2026-11-15T00:00:00Z',_dynamic:{}};
+   cycleDay:frozenDay,conceptionDate:conception,_dynamic:{}};
  const before=JSON.stringify(carrier);
  const html=render(who,carrier,x=>x);
  assert.equal(JSON.stringify(carrier),before,'no cycle/pregnancy state mutations');
@@ -65,4 +69,15 @@ test('pregnant scene card does not invent menstrual or fertility events',()=>{
 });
 test('pregnancy card ignores outdated dynamic text from other carrier',()=>{
  const html=sample();assert.ok(html.includes('Day 9/28'));
+});
+test('a calendar date transition advances before 24 hours elapsed',()=>{
+  // Conception at 23:30 Nov 15, scene at 08:24 Nov 16 (<24h).
+  assert.equal(sceneCalendarDaysSinceConception(
+    {conceptionDate:'2026-11-15T23:30:00Z'},{rpDate:'2026-11-16T08:24:00Z'}),1);
+  assert.match(sample({known:false,conception:'2026-11-15T23:30:00Z'}),/Day 9\/28 · scene-based status/);
+});
+test('same calendar date does not advance scene day',()=>{
+  rpTime.value='2026-11-15T23:59:00Z';
+  assert.match(sample({conception:'2026-11-15T00:01:00Z'}),/Day 8\/28 · scene-based status/);
+  rpTime.value='2026-11-16T08:24:00Z';
 });

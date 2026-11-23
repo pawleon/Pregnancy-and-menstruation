@@ -274,3 +274,8 @@ The Cycle infoblock advances its **display-only** scene-day counter by full days
 ## v3.22.3 — Restore missed trailing RP_DATE during final render
 
 When the model's final RP_DATE tag arrives after the first streaming message scan, the final character-message renderer now rereads the explicit RP_DATE from the fully saved message. Previously the final render reprocessed RP_STATUS but read RP_DATE only when synthesizing a new tag. Repeated final events remain idempotent, and rendering earlier history cannot rewind the current RP date. Gwen's pregnancy awareness and the frozen underlying menstrual cycle are unchanged.
+
+
+## v3.22.4 — RP calendar-day display and restart reconciliation
+
+Pregnant scene-day badges now use **RP calendar-day transitions**, not completed 24-hour periods since the conception timestamp. The frozen menstrual day is not changed; the same calculation is used in the infoblock and settings summary. On chat load/startup, an existing tracked chat now reconciles its saved RP clock against the most recent explicit `RP_DATE` tag (up to the last 64 messages), without regenerating a reply, replaying reproductive events, or revealing pregnancy. Repeated dates are deduplicated; older dated messages never rewind the saved clock during the reconciliation. Same-day date edits are persisted and repainted. Pregnancy calculation and gestational weeks use their existing logic.

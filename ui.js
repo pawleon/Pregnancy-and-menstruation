@@ -1,6 +1,17 @@
 import { cycleLength, bleedingDays, pregnancyLength, fertileDays, advanceCycle, hormoneCycleHint, developmentRate } from './cycle-model.js';
 import { setManualCycleDay, setManualPregnancyWeeks, setSecondParent, refreshRegenSnapshot } from './message-handler.js';
 import { reportError } from './diagnostics.js';
+// Scene-based day display follows RP calendar transitions, not 24-hour
+// elapsed time. The actual menstrual cycle remains frozen during pregnancy.
+// Keep pregnancy-test and gestational calculations on their existing clocks.
+function sceneCalendarDaysSinceConception(carrier, root) {
+    if (!carrier?.conceptionDate || !root?.rpDate) return 0;
+    const conception = new Date(carrier.conceptionDate);
+    const scene = new Date(root.rpDate);
+    if (!Number.isFinite(conception.getTime()) || !Number.isFinite(scene.getTime())) return 0;
+    const calendarDay = d => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000;
+    return Math.max(0, calendarDay(scene) - calendarDay(conception));
+}
 function cycleSummary(who, c, s) {
     if (lossCyclePaused(who)) return 'Cycle paused — recovery after pregnancy loss';
     if (!hasCycle(s, who) && !c.isPregnant) return isOmegaverse(s) ? roleLabel(s, who) : 'Status';
@@ -8,7 +19,7 @@ function cycleSummary(who, c, s) {
     const pp = getPostpartum(c, getPregnancyData());
     if (pp && !pp.cycleReturned) return 'Cycle paused — postpartum';
     if (lossCyclePaused(who)) return 'Cycle paused — recovery after pregnancy loss';
-    const day = (who === 'char' ? (c.cycleDay || 1) : getCycleDay()) + (c.isPregnant ? daysSinceConception(c, getPregnancyData()) : 0);
+    const day = (who === 'char' ? (c.cycleDay || 1) : getCycleDay()) + (c.isPregnant ? sceneCalendarDaysSinceConception(c, getPregnancyData()) : 0);
     const length = cycleLength(s, who);
     // A pregnant carrier's menstrual cycle is paused, not the scene-day display.
     if (c.isPregnant) return `Day ${day}/${length} · scene-based status`;
@@ -626,7 +637,7 @@ function cycleCardHtml(who, c, tr) {
     // the character knows they are pregnant; c.cycleDay remains unchanged.
     const pregnant = !!c.isPregnant;
     const frozenDay = who === 'char' ? Math.max(1, c.cycleDay || 1) : getCycleDay();
-    const rawDay = frozenDay + (pregnant ? daysSinceConception(c, p0) : 0);
+    const rawDay = frozenDay + (pregnant ? sceneCalendarDaysSinceConception(c, p0) : 0);
     const len = cycleLength(s, who), bleed = bleedingDays(s, who);
     const day = Math.max(1, Math.min(len, rawDay));
     const method = getContraception(who);

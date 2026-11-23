@@ -12,7 +12,7 @@ import { setSyncUI, setUpdatePromptInjection, setRenderInfoblock } from './pregn
 import { updatePromptInjection } from './prompts.js';
 import { syncUI, setupUI } from './ui.js';
 import { onMessageReceived, onMessageSent, renderInfoblock, markRegeneration, prepareGeneration, processDateTag, rescanStatusOnly, rollbackToPosition, clearRegenState, detachTags, rawTextOf, prepareTrackerOutput, filterTrackerContext } from './message-handler.js';
-import { stripHiddenTags, scanFullHistory } from './scanner.js';
+import { stripHiddenTags, scanFullHistory, scanDateTag } from './scanner.js';
 import { initializeContraceptionTimeline, reconcileContraceptionTimeline, parseContraceptionEvents } from './contraception-events.js';
 import { contraceptionEventNotice } from './contraception-notices.js';
 
@@ -127,11 +127,41 @@ function loadSettings() {
     }
 }
 
+// A stored per-chat RP date can lag behind the latest saved message after a
+// restart, edit, or missed streaming callback. Refresh the date alone;
+// never replay reproductive events, mutate pregnancy knowledge, or rewind.
+function syncLatestRpDateFromHistory() {
+    try {
+        const chat = SillyTavern.getContext()?.chat;
+        if (!Array.isArray(chat) || !chat.length) return false;
+        const p = getPregnancyData();
+        const virgin = !p.isPregnant && !p.hasBaby && !p.rpDate
+            && (!Array.isArray(p._history) || p._history.length === 0);
+        // The existing one-time bootstrap owns fresh, untracked chats.
+        if (virgin && !p._bootstrapDone) return false;
+        // Look only for the most recent actual RP_DATE, not arbitrary prose.
+        for (let i = chat.length - 1; i >= Math.max(0, chat.length - 64); i--) {
+            const msg = chat[i];
+            if (!msg || msg.is_system) continue;
+            const raw = rawTextOf(msg);
+            const date = scanDateTag(raw);
+            if (!date) continue;
+            const savedTime = p.rpDate ? new Date(p.rpDate).getTime() : NaN;
+            if (!Number.isFinite(savedTime) || date.getTime() >= savedTime)
+                return processDateTag(raw);
+            // Older/rewound replies should never roll back the live timeline.
+            return false;
+        }
+    } catch (e) { reportError('[Reproductive] latest RP date sync error:', e); }
+    return false;
+}
+
 function refreshAfterChatChange(attempt = 1) {
     initializeContraceptionTimeline();
     reconcileContraceptionTimeline();
     const MAX_ATTEMPTS = 6;
     const chatId = getCurrentChatId();
+    if (chatId) syncLatestRpDateFromHistory();
     syncUI();
     updatePromptInjection();
     renderInfoblock();
@@ -193,6 +223,8 @@ jQuery(async () => {
 
         initCustomNotifications();
         setupUI();
+        // Recover the latest saved RP clock on startup without another AI turn.
+        setTimeout(() => refreshAfterChatChange(1), 250);
         initializeContraceptionTimeline();
         updatePromptInjection();
         // The existing glowing notifier is shared with conception/cycle alerts.

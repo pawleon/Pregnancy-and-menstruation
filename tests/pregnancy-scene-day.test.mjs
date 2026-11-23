@@ -6,16 +6,17 @@ const a=source.indexOf('function cycleCardHtml(');
 const b=source.indexOf('\n// Internal implementation note.\nfunction formatAgeStr(',a);
 assert.ok(a>=0&&b>a,'cycle card function found');
 const card=source.slice(a,b);
-const helperStart=source.indexOf('function sceneCalendarDaysSinceConception(');
+const helperStart=source.indexOf('function sceneCalendarDayDelta(');
 const helperEnd=source.indexOf('\nfunction cycleSummary(',helperStart);
 assert.ok(helperStart>=0 && helperEnd>helperStart);
-const sceneCalendarDaysSinceConception=new Function(source.slice(helperStart,helperEnd)+'\nreturn sceneCalendarDaysSinceConception;')();
+const helpers=new Function('getCycleDay',source.slice(helperStart,helperEnd)+'\nreturn {sceneCalendarDaysSinceConception,sceneDisplayDay};')(()=>8);
+const {sceneCalendarDaysSinceConception,sceneDisplayDay}=helpers;
 const rpTime={value:'2026-11-16T08:24:00Z'};
 const mocks={
  getSettings:()=>({tryingToConceive:true}),
  getPregnancyData:()=>({rpDate:rpTime.value}),
  getCycleDay:()=>8,
- sceneCalendarDaysSinceConception,
+ sceneCalendarDaysSinceConception,sceneDisplayDay,
  cycleLength:()=>28,bleedingDays:()=>5,
  getContraception:()=>null,getContraceptionDetails:()=>({}),contraceptionStatus:()=>({active:false}),
  getPhaseInfo:()=>({name:'Ovulation'}),

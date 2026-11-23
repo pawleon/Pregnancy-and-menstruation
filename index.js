@@ -275,17 +275,22 @@ jQuery(async () => {
                     setTimeout(renderInfoblock, 200);
                     return;
                 }
-                // Scan before stripping tags; after that RP_STATUS cannot be restored from msg.mes.
+                // Final rendered message may have a trailing RP_DATE tag not
+                // available to the first (streaming) scan. Re-read the whole
+                // raw message, not merely RP_STATUS, without affecting older
+                // messages that are being re-rendered.
                 try {
                     const raw = rawTextOf(msg);
                     if (finalStatusSeen.get(msg) !== raw) {
                         rescanStatusOnly(raw);
                         finalStatusSeen.set(msg, raw);
                     }
+                    if (idx === context.chat.length - 1) processDateTag(raw);
                 } catch (e) { reportError('[Reproductive] message rescan error:', e); }
-                // Keep technical comments in the saved source; HTML already hides them.
+                // An explicit RP_DATE does not need to be synthesized:
+                // processDateTag above handles both existing and generated tags.
                 if (prepareTrackerOutput(msg)) {
-                    processDateTag(msg.mes);
+                    if (idx === context.chat.length - 1) processDateTag(rawTextOf(msg));
                     if (context.saveChat) context.saveChat();
                 }
                 // Hide tags only in the rendered DOM. Keep msg.mes intact so technical comments

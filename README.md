@@ -269,3 +269,8 @@ Automated tests cover parsing, false-positive rejection, manual correction, per-
 ## v3.22.2 — Scene-based pregnancy day counter
 
 The Cycle infoblock advances its **display-only** scene-day counter by full days elapsed since conception, regardless of whether the character knows about pregnancy. Menstrual state remains frozen during pregnancy, and the pregnancy timeline continues to derive from RP dates. For a November 15 midnight conception and a frozen Day 8, November 16 08:24 displays **Day 9/28 · scene-based status**. The cycle card no longer shows menstrual hygiene, delayed menstruation, or trying-to-conceive indicators during pregnancy. No pregnancy scanner, RP date parser, or cycle state mutation logic was changed.
+
+
+## v3.22.3 — Restore missed trailing RP_DATE during final render
+
+When the model's final RP_DATE tag arrives after the first streaming message scan, the final character-message renderer now rereads the explicit RP_DATE from the fully saved message. Previously the final render reprocessed RP_STATUS but read RP_DATE only when synthesizing a new tag. Repeated final events remain idempotent, and rendering earlier history cannot rewind the current RP date. Gwen's pregnancy awareness and the frozen underlying menstrual cycle are unchanged.

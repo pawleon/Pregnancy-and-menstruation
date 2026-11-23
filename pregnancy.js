@@ -1491,9 +1491,12 @@ export function getPostpartum(carrier, root) {
     if (carrier?.isPregnant || carrier?.lossRecovery) return null;
     const pp = carrier?.postpartum;
     if (!pp?.startRpDate || !root?.rpDate) return null;
-    const ms = new Date(root.rpDate).getTime() - new Date(pp.startRpDate).getTime();
-    if (isNaN(ms) || ms < 0) return null;
-    const days = Math.floor(ms / 86400000);
+    const now = new Date(root.rpDate), birth = new Date(pp.startRpDate);
+    if (!Number.isFinite(now.getTime()) || !Number.isFinite(birth.getTime())) return null;
+    // RP calendar days, not elapsed 24-hour blocks (matches processDateTag).
+    const calendarDay = d => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000;
+    const days = calendarDay(now) - calendarDay(birth);
+    if (days < 0) return null;
     const who=carrier===getPartnerData()?'char':'user';
     const suffix=who==='char'?'Char':'User';
     const s=getSettings();
@@ -1501,12 +1504,42 @@ export function getPostpartum(carrier, root) {
     const feeding=pp.feeding || (pp.lactating===true?'breastfeeding':pp.lactating===false?'formula':'unknown');
     const defaultDays=feeding==='breastfeeding'?180:feeding==='mixed'?90:feeding==='formula'?45:null;
     const returnDays=mode==='manual'?null:mode==='custom'?Number(s['postpartumReturnDays'+suffix]):defaultDays;
-    const st = postpartumState(days, pp.lactating===true ? true : pp.lactating===false ? false : null,returnDays);
-    if (days > 730 && !pp.cycleResumed) return null;
-    return { ...st, feeding, cycleReturned:!!pp.cycleResumed || st.cycleReturned, fertilityMul:pp.cycleResumed?1:st.fertilityMul, lactating:pp.lactating===true && st.lactating };
+    const st = postpartumState(days, pp.lactating===true ? true : pp.lactating===false ? false : null, returnDays);
+    // A manual-only recovery remains paused however much RP time elapses.
+    // Postpartum history is retained instead of disappearing after two RP years.
+    const returned = !!pp.cycleResumed || st.cycleReturned;
+    return { ...st, feeding, returnMode:mode, returnDays, cycleReturned:returned,
+        fertilityMul:returned?1:st.fertilityMul, lactating:pp.lactating===true && st.lactating };
 }
 
 // Internal implementation note.
+// Materialize an automatic return exactly once. A multi-day RP skip starts a
+// new cycle at its scheduled return day, not at the old pre-pregnancy day.
+export function reconcilePostpartumReturn(who = 'user', root = getPregnancyData()) {
+    if (!['user','char'].includes(who)) return false;
+    const c = who === 'char' ? getPartnerData() : root;
+    const pp = c?.postpartum;
+    if (!pp || pp.cycleResumed || c.isPregnant || c.lossRecovery) return false;
+    const status = getPostpartum(c, root);
+    if (!status?.cycleReturned || !Number.isFinite(status.returnDays) || status.returnDays < 1) return false;
+    const birth = new Date(pp.startRpDate), now = new Date(root.rpDate);
+    if (!Number.isFinite(birth.getTime()) || !Number.isFinite(now.getTime())) return false;
+    const calendarDay = d => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000;
+    const returnAt = calendarDay(birth) + status.returnDays;
+    const elapsed = calendarDay(now) - returnAt;
+    if (elapsed < 0) return false;
+    pp.cycleResumed = true;
+    pp.cycleReturnRpDate = new Date(returnAt * 86400000).toISOString();
+    pp.cycleReturnSource = status.returnMode;
+    c.cycleDay = advanceCycle(1, elapsed, cycleLength(getSettings(), who)).day;
+    c._cycleShift = 0;
+    c._dynamic = {};
+    saveSettingsDebounced();
+    if (getSettings().showNotifications)
+        showNotification(`<i class="fa-solid fa-droplet"></i> ${carrierName(who)}: postpartum menstrual cycle resumed (Day ${c.cycleDay})`, 'info');
+    return true;
+}
+
 export function setLactating(who, value) {
     const c = who === 'char' ? getPartnerData() : getPregnancyData();
     if (!c.postpartum) return false;
@@ -1609,12 +1642,20 @@ export function setPostpartumFeeding(who, mode) {
     refreshSnap();saveSettingsDebounced();_syncUI();_updatePromptInjection();_renderInfoblock();
     return true;
 }
-export function resumePostpartumCycle(who='user') {
-    const c=who==='char'?getPartnerData():getPregnancyData();
-    if(!c.postpartum)return false;
+export function resumePostpartumCycle(who='user', source='manual') {
+    if (!['user','char'].includes(who)) return false;
+    const root=getPregnancyData(), c=who==='char'?getPartnerData():root;
+    if(!c.postpartum || c.postpartum.cycleResumed || c.isPregnant) return false;
     c.postpartum.cycleResumed=true;
+    c.postpartum.cycleReturnRpDate=root.rpDate || null;
+    c.postpartum.cycleReturnSource=source==='story'?'story':'manual';
     c.cycleDay=1;
+    c._cycleShift=0;
     c._dynamic={};
-    refreshSnap();saveSettingsDebounced();_syncUI();_updatePromptInjection();_renderInfoblock();
+    saveSettingsDebounced();
+    // Scan-time story events must preserve the pre-turn rollback snapshot.
+    if (source !== 'story') {
+        refreshSnap();_syncUI();_updatePromptInjection();_renderInfoblock();
+    }
     return true;
 }

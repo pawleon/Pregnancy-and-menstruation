@@ -6,7 +6,7 @@ import { cycleLength, bleedingDays, pregnancyLength, fertileDays, advanceCycle, 
 import { getSettings, getPregnancyData, getCycleDay, setCycleDay, getCurrentChatId, getContraception, getContraceptionDetails } from './state.js';
 import { contraceptionStatus } from './contraception-rules.js';
 import { scanMessage, scanDateTag, scanStatusTag, scanWeeksFromText, scanPregnancyStateTag, stripHiddenTags, stripThink, stripReproTags, hasReproTags, messageRaw, confirmedFetusCount } from './scanner.js';
-import { applyScanResult, createPregnancyFromWeeks, createPregnancyFromStateTag, partnerCheckConception, partnerBirth, getPostpartum, canTriggerBirth } from './pregnancy.js';
+import { applyScanResult, createPregnancyFromWeeks, createPregnancyFromStateTag, partnerCheckConception, partnerBirth, getPostpartum, reconcilePostpartumReturn, resumePostpartumCycle, canTriggerBirth } from './pregnancy.js';
 import { getPartnerData, carrierName, isTracked } from './state.js';
 import { hasMenstrualCycle, hasOvulation, hasCycle, cyclePhase, heatDay } from './omegaverse.js';
 import { conceptionTerm, pregnancyDatingMode } from './pregnancy.js';
@@ -242,6 +242,13 @@ function runScan() {
 
     // 0) RP_DATE tag: always extract date and advance time
     let dateAdvanced = processDateTag(text);
+
+    // In story/manual mode, only a confirmed period-return event resumes the
+    // menstrual cycle. Never treat postpartum lochia, fear or a time jump as a period.
+    const returnStatus = scanStatusTag(text);
+    for (const who of detectPostpartumPeriodReturns(text, returnStatus, s, p)) {
+        resumePostpartumCycle(who, 'story');
+    }
 
     // 0.5) Completed menstrual hygiene actions, with independent RP clocks.
     // Fields are in the existing per-chat state snapshots (swipe/delete rollback).
@@ -776,6 +783,43 @@ function applyStatusData(s, p, data) {
     }
 }
 
+// ─── Confirmed postpartum first menstruation, with ownership and negation guards ───
+// Only relevant for the explicit Story event / manual return mode.
+function detectPostpartumPeriodReturns(text, status, s, root) {
+    const scene = stripThink(text).replace(/<!--[\s\S]*?-->/g, '')
+        .replace(/\[(?:OOC|ooc)[:\s][^\]]*\]/g, '');
+    const statements = scene.split(/[.!?;\n]+/).map(x => x.trim()).filter(Boolean);
+    const completed = /\b(?:period|menstruation)\b.{0,55}\b(?:returned|resumed|started|began|came back)\b|\b(?:started|began|got|had|resumed|returned)\b.{0,45}\b(?:first|postpartum|menstrual)?\s*(?:period|menstruation)\b/i;
+    const speculative = /\b(?:if|when|unless|would|could|might|may|will|should|expect(?:ed|ing)?|hope(?:d|s)?|wish(?:ed|es)?|imagin(?:ed|ing)|remember(?:ed|ing)?|not|never|no|without|before|wonder(?:ed|ing)?|plan(?:s|ned|ning)?|maybe|perhaps|supposed|thought)\b/i;
+    const matchName = (name, line) => {
+        const bits = String(name || '').trim().split(/\s+/);
+        const first = bits[0] || '';
+        if (first.length < 3) return false;
+        return new RegExp('\\b' + first.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(line);
+    };
+    const found = [];
+    for (const who of ['user','char']) {
+        const c = who === 'char' ? getPartnerData() : root;
+        if (c.isPregnant || !c.postpartum || c.postpartum.cycleResumed) continue;
+        if ((s['postpartumReturnMode' + (who==='char'?'Char':'User')] || 'estimated') !== 'manual') continue;
+        const own = carrierName(who), other = carrierName(who==='char'?'user':'char');
+        const state = who==='char' ? (status?.char || status?.partner) : (status?.user || status);
+        const explicitTag = state?.postpartum_cycle_returned === true;
+        for (const line of statements) {
+            if (!completed.test(line) || speculative.test(line)) continue;
+            const named = matchName(own, line), otherNamed = matchName(other, line);
+            if (otherNamed && !named) continue;
+            // In dual-carrier tracking, require an explicit owner or a matched name.
+            if ((named && !otherNamed) || (explicitTag && (!otherNamed || named)) ||
+                (s.trackFor === who && !otherNamed)) {
+                found.push(who);
+                break;
+            }
+        }
+    }
+    return found;
+}
+
 // ─── Advance cycle day and pregnancy weeks ───
 
 function advanceTime(s, p, daysPassed) {
@@ -801,12 +845,17 @@ function advanceTime(s, p, daysPassed) {
         }
     }
 
+    // A new post-birth period is a new cycle: do not also advance it by all skipped RP days.
+    const partnerJustReturned = isTracked('char') && reconcilePostpartumReturn('char', p);
+    const userJustReturned = isTracked('user') && reconcilePostpartumReturn('user', p);
+    if (partnerJustReturned || userJustReturned) changed = true;
+
     // Internal implementation note.
     if (isTracked('char')) {
         try {
             const c = getPartnerData();
             // Each selected carrier advances the same cycle model independently.
-            if (!c.isPregnant && !lossCyclePaused('char') && hasCycle(s, 'char')) {
+            if (!partnerJustReturned && !c.isPregnant && !lossCyclePaused('char') && hasCycle(s, 'char')) {
                 const pp = getPostpartum(c, p);
                 if (!pp || pp.cycleReturned) {
                     c._dynamic = {};
@@ -851,7 +900,7 @@ function advanceTime(s, p, daysPassed) {
     }
     // ── Advance cycle day (per-chat configurable cycle length) ──
     const userPostpartum = getPostpartum(p, p);
-    if (!p.isPregnant && !lossCyclePaused('user') && isTracked('user') && hasCycle(s, 'user') && (!userPostpartum || userPostpartum.cycleReturned)) {
+    if (!userJustReturned && !p.isPregnant && !lossCyclePaused('user') && isTracked('user') && hasCycle(s, 'user') && (!userPostpartum || userPostpartum.cycleReturned)) {
         const oldDay = getCycleDay();
         // Internal implementation note.
         // Internal implementation note.

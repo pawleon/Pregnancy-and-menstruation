@@ -40,7 +40,7 @@ import { HYGIENE, getFlow, getHygieneState, getPhaseEffects, hoursBetween } from
 import { getPhaseInfo as phaseInfo, calculateWeeksFromDates, getSymptomsForProgress, getRecommendationsForProgress, formatSexIcons, formatFetusCount, getHealthInfo, detectChatLanguage, translateStatusValue } from './helpers.js';
 import { babyAgeDays, getCareNeeds, getGrowthStage, MILESTONE_ICONS, milestonesTotal } from './baby-care.js';
 import { calculateDueDate } from './date-parser.js';
-import { conceptionTerm, displayPregnancyWeeks, pregnancyDatingMode, resetPregnancy, resetBaby, undoManualDelivery, clearPostpartum, setPostpartumFeeding, resumePostpartumCycle, visitDoctor, applyScanResult, startManualPregnancy, startManualBaby, startPartnerPregnancy, resetPartnerPregnancy, takePregnancyTest, revealPregnancy, getPostpartum, pregnancyIsKnown, daysSinceConception, setLactating, setTrying, monthsTrying, createUndoCheckpoint, undoLastDestructiveChange, editBabyDetails, setFetusSexes } from './pregnancy.js';
+import { conceptionTerm, displayPregnancyWeeks, pregnancyDatingMode, resetPregnancy, resetBaby, undoManualDelivery, clearPostpartum, setPostpartumFeeding, resumePostpartumCycle, visitDoctor, applyScanResult, startManualPregnancy, startManualBaby, startPartnerPregnancy, resetPartnerPregnancy, takePregnancyTest, revealPregnancy, getPostpartum, reconcilePostpartumReturn, pregnancyIsKnown, daysSinceConception, setLactating, setTrying, monthsTrying, createUndoCheckpoint, undoLastDestructiveChange, editBabyDetails, setFetusSexes } from './pregnancy.js';
 import { normalizeParentProfile, parseParentDescription, PROFILE_FIELDS } from './genetics.js';
 import { updatePromptInjection } from './prompts.js';
 import { recordManualContraception, getLastContraceptionEvent } from './contraception-events.js';
@@ -510,6 +510,8 @@ export function buildInfoblockHtml() {
 // Internal implementation note.
 function carriersHtml(tr) {
     const s = getSettings();
+    // Reconcile already-past return dates for existing chats opened after upgrading.
+    for (const { who } of getCarriers()) reconcilePostpartumReturn(who);
     const cards = [];
     for (const { who, data } of getCarriers()) {
         // Internal implementation note.

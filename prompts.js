@@ -36,7 +36,7 @@ function carrierCycleLine(who, s) {
     const nm = who === 'char' ? '{{char}}' : '{{user}}';
     if (c.isPregnant) return pregnancyIsKnown(c, s) ? `${nm}: pregnant; cycle paused` : `${nm}: pregnancy private; cycle paused`;
     const pp = getPostpartum(c, getPregnancyData());
-    if (pp && !pp.cycleReturned) return `${nm}: postpartum; cycle paused`;
+    if (pp && !pp.cycleReturned) return `${nm}: postpartum; cycle paused${(s['postpartumReturnMode'+(who==='char'?'Char':'User')]||'estimated')==='manual' ? '; menstrual return requires confirmed in-story period or player action' : ''}`;
     if (lossCyclePaused(who)) return `${nm}: recovering from confirmed pregnancy loss; menstrual cycle not yet resumed`;
     const day = who === 'char' ? (c.cycleDay || 1) : getCycleDay();
     const method = getContraception(who);
@@ -291,6 +291,8 @@ function postpartumBlock(p) {
     if (!pp) return '';
     let b = `[POSTPARTUM] ${pp.days}d since birth; recovery=${pp.healing || 'normal'}; lochia=${pp.lochia ? 'yes' : 'no'}; breastfeeding=${pp.lactating ? 'yes' : 'no'}.\n`;
     b += pp.cycleReturned ? 'Cycle returned; conception possible.\n' : 'Cycle not returned yet.\n';
+    if (!pp.cycleReturned && (getSettings().postpartumReturnModeUser || 'estimated') === 'manual')
+        b += 'Story/manual cycle return: do not assume a period from elapsed time, lochia, spotting, or recovery alone. Only when the CURRENT scene explicitly confirms the FIRST menstrual period after birth, include postpartum_cycle_returned:true in RP_STATUS.user; otherwise omit it.\n';
     if (pp.days < 42) b += 'Early recovery: fatigue/discomfort may matter; never force intimacy.\n';
     return b;
 }

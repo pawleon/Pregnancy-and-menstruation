@@ -59,8 +59,9 @@ export function postpartumState(daysSinceBirth, lactating = null, returnDays = n
         : null;
     // Internal implementation note.
     // Unknown feeding status must not be silently treated as breastfeeding.
-    const estimatedReturn = returnDays === null ? (lactating === true ? 180 : lactating === false ? 45 : null) : returnDays;
-    const cycleReturned = Number.isFinite(estimatedReturn) ? d >= estimatedReturn : false;
+    // Caller selects the return policy. null means NO automatic return (manual or unknown feeding).
+    // Never infer a fallback from lactation when the caller selected manual-only.
+    const cycleReturned = Number.isFinite(returnDays) ? d >= returnDays : false;
     const lochia = d < 35;
     return {
         days: d,

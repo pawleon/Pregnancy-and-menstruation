@@ -699,6 +699,7 @@ function applyStatusData(s, p, data) {
         // Pregnancy mode
         if (userData.mood) p.mood = userData.mood;
         if (userData.libido) p.libido = userData.libido;
+        if (userData.physical) p.physical = userData.physical;
         if (userData.weight_gain) p.weightGain = userData.weight_gain;
         if (userData.baby_activity) p.babyActivity = userData.baby_activity;
         if (!p._secondParentManual && userData.father_name && userData.father_name !== p.fatherName) {
@@ -715,6 +716,9 @@ function applyStatusData(s, p, data) {
         }
 
         p._dynamic = {
+            libido: userData.libido || null,
+            mood: userData.mood || null,
+            physical: userData.physical || null,
             symptoms: userData.symptoms || null,
             recommendations: userData.recommendations || null,
             movements: userData.movements || null,
@@ -746,11 +750,15 @@ function applyStatusData(s, p, data) {
         const d2 = partnerData;
         if (d2.mood) c.mood = d2.mood;
         if (d2.libido) c.libido = d2.libido;
+        if (d2.physical) c.physical = d2.physical;
         if (d2.weight_gain) c.weightGain = d2.weight_gain;
         if (d2.baby_activity) c.babyActivity = d2.baby_activity;
         if (!c._secondParentManual && d2.father_name) c.fatherName = String(d2.father_name).slice(0, 80);
         if (d2.sex_revealed === true && c.isPregnant && !c.fetusSexRevealed) c.fetusSexRevealed = true;
         c._dynamic = c.isPregnant ? {
+            libido: d2.libido || null,
+            mood: d2.mood || null,
+            physical: d2.physical || null,
             symptoms: d2.symptoms || null,
             recommendations: d2.recommendations || null,
             movements: d2.movements || null,
@@ -1128,6 +1136,22 @@ export function prepareGeneration(genType, dryRun = false) {
 // Internal implementation note.
 // Internal implementation note.
 // Internal implementation note.
+export function setPausedCycleDay(who, day) {
+    if (!['user','char'].includes(who) || !getCurrentChatId()) return false;
+    const p = getPregnancyData(), c = who === 'char' ? getPartnerData() : p;
+    if (!c.isPregnant) return false;
+    const value = Number(day);
+    if (!Number.isInteger(value) || value < 1 || value > cycleLength(getSettings(), who)) return false;
+    // Per-chat correction only: no changes to pregnancy, conception date, or weeks.
+    c.cycleDayAtConception = value;
+    c.cycleDay = value;
+    c._userSetCycleAt = Date.now();
+    refreshRegenSnapshot();
+    saveSettingsDebounced();
+    updatePromptInjection();
+    return value;
+}
+
 export function setManualCycleDay(who, day) {
     if (!['user','char'].includes(who)) return false;
     const p = getPregnancyData(), c = who === 'char' ? getPartnerData() : p;

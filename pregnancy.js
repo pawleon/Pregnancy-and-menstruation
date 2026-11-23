@@ -232,7 +232,7 @@ export function applyScanResult(result) {
     }
 
     // Internal implementation note.
-    if (result.cycle_day !== null && result.cycle_day !== undefined && !(p.lossRecovery && !p.lossRecovery.cycleResumed && !p.isPregnant) && (result._source === 'manual' || !isManualCycleProtected('user'))) {
+    if (!p.isPregnant && result.cycle_day !== null && result.cycle_day !== undefined && !(p.lossRecovery && !p.lossRecovery.cycleResumed && !p.isPregnant) && (result._source === 'manual' || !isManualCycleProtected('user'))) {
         const day = parseInt(result.cycle_day);
         const current = getCycleDay();
         if (day >= 1 && day <= cycleLength(s, 'user') && day !== current) {
@@ -628,6 +628,7 @@ export function checkConception(encounterMethods = []) {
     };
 
     if (success) {
+        p.cycleDayAtConception = getCycleDay();
         p.isPregnant = true;
     p.lossRecovery = null;
         s._birthBlockedUntilUser = null;
@@ -885,6 +886,7 @@ export function createPregnancyFromWeeks(weeks, { notify = true } = {}) {
     // internally the tracker always stores elapsed weeks since conception.
     const mode=s.pregnancyDatingMode==='obstetric'?'obstetric':'conception';
     const elapsedWeeks=Math.max(0,w-(mode==='obstetric'?2:0));
+    p.cycleDayAtConception = getCycleDay();
     p.isPregnant = true;
     p.lossRecovery = null;
     p.datingMode=mode;
@@ -920,6 +922,7 @@ export function createPregnancyFromStateTag(pregState, { notify = true } = {}) {
     const conceptionMs = new Date(pregState.conceptionDate).getTime();
     if (isNaN(conceptionMs)) return false;
 
+    p.cycleDayAtConception = getCycleDay();
     p.isPregnant = true;
     p.lossRecovery = null;
     p.conceptionDate = pregState.conceptionDate;
@@ -964,6 +967,7 @@ export function startManualPregnancy(conceptionDateISO, fetusCount, fetusSex = n
         p.fatherName = String(secondParent).trim().slice(0, 80);
         p._secondParentManual = true;
     }
+    p.cycleDayAtConception = getCycleDay();
     p.isPregnant = true;
     p.lossRecovery = null;
     p.datingMode=s.pregnancyDatingMode;
@@ -1200,6 +1204,7 @@ export function partnerCheckConception(encounterMethods = []) {
     const success = r <= chance;
 
     if (success) {
+        c.cycleDayAtConception = c.cycleDay || 1;
         c.isPregnant = true;
     c.lossRecovery = null;
         c.pregnancyKnown = !s.hiddenPregnancy;
@@ -1361,6 +1366,7 @@ export function startPartnerPregnancy(conceptionDateISO, fetusCount, fetusSex = 
         c.fatherName = String(secondParent).trim().slice(0, 80);
         c._secondParentManual = true;
     }
+    c.cycleDayAtConception = c.cycleDay || 1;
     c.isPregnant = true;
     c.lossRecovery = null;
     c.datingMode=s.pregnancyDatingMode;

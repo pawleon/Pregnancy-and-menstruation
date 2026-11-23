@@ -1,5 +1,5 @@
 import { cycleLength, bleedingDays, pregnancyLength, fertileDays, advanceCycle, hormoneCycleHint, developmentRate } from './cycle-model.js';
-import { setManualCycleDay, setManualPregnancyWeeks, setSecondParent, refreshRegenSnapshot } from './message-handler.js';
+import { setManualCycleDay, setPausedCycleDay, setManualPregnancyWeeks, setSecondParent, refreshRegenSnapshot } from './message-handler.js';
 import { reportError } from './diagnostics.js';
 function cycleSummary(who, c, s) {
     if (lossCyclePaused(who)) return 'Cycle paused — recovery after pregnancy loss';
@@ -7,7 +7,7 @@ function cycleSummary(who, c, s) {
     if (c.isPregnant && pregnancyIsKnown(c, s)) return `Pregnancy — ${displayPregnancyWeeks(c,s)} weeks`;
     // The player can see private tracker information before characters discover it.
     if (c.isPregnant) {
-        const frozenDay = who === 'char' ? Math.max(1, c.cycleDay || 1) : getCycleDay();
+        const frozenDay = getPausedCycleDay(who);
         return `Day ${frozenDay}/${cycleLength(s,who)} · Cycle paused due to pregnancy (character unaware)`;
     }
     const pp = getPostpartum(c, getPregnancyData());
@@ -33,7 +33,7 @@ function getPhaseInfo(day, lang = 'en', who = 'user') {
 }
 // UI v5 — compact, minimal icons, visual infoblock
 import { saveSettingsDebounced } from './state.js';
-import { getSettings, getPregnancyData, getPartnerData, getCarriers, carrierName, isTracked, getCycleDay, setCycleDay, getCurrentChatId, L, getContraception, setContraception, getContraceptionDetails, setContraceptionDetails, canSetContraception, canSetChatOptions, setCycleRealism, getParentProfile, setParentProfile, syncBabyLegacyFields } from './state.js';
+import { getSettings, getPregnancyData, getPartnerData, getCarriers, carrierName, isTracked, getCycleDay, getPausedCycleDay, setCycleDay, getCurrentChatId, L, getContraception, setContraception, getContraceptionDetails, setContraceptionDetails, canSetContraception, canSetChatOptions, setCycleRealism, getParentProfile, setParentProfile, syncBabyLegacyFields } from './state.js';
 import { isOmegaverse, hasMenstrualCycle, hasOvulation, canCarry, hasAnyTracking, hasCycle, designationOf, roleLabel, cyclePhase, heatSettings, heatDay } from './omegaverse.js';
 import { missedDays, fertileWindow } from './fertility.js';
 import { HYGIENE, getFlow, getHygieneState, getPhaseEffects, hoursBetween } from './cycle-realism.js';
@@ -626,7 +626,7 @@ function cycleCardHtml(who, c, tr) {
     // Internal implementation note.
     // Internal implementation note.
     const hidden = c.isPregnant && !pregnancyIsKnown(c, s);
-    const frozenDay = who === 'char' ? Math.max(1, c.cycleDay || 1) : getCycleDay();
+    const frozenDay = getPausedCycleDay(who);
     // The menstrual day stays frozen during pregnancy, regardless of RP time.
     const rawDay = frozenDay;
     const len = cycleLength(s, who), bleed = bleedingDays(s, who);
@@ -640,8 +640,10 @@ function cycleCardHtml(who, c, tr) {
     const role = isOmegaverse(s) ? roleLabel(s, who) : '';
     const hot = !!heatDay(s,who,day,getPregnancyData().rpDate)?.active;
     const cyclePct = Math.min(100, Math.round(rawDay / len * 100));
-    const cd = hidden ? { fertility:'Paused (pregnancy)', libido:'—', mood:'—', physical:'—', note:'' }
-        : (hasMenstrualCycle(s,who)||hasOvulation(s,who)) ? getCycleDetails(day, len, hasMenstrualCycle(s,who)?bleed:0) : { fertility:'—', libido:hot?'High':'Normal', mood:hot?'Arousal':'Calm', physical:hot?'Heat, sensitivity':'Normal', note:'' };
+    const cd = (hasMenstrualCycle(s,who)||hasOvulation(s,who))
+        ? getCycleDetails(day, len, hasMenstrualCycle(s,who)?bleed:0)
+        : { fertility:'—', libido:hot?'High':'Normal', mood:hot?'Arousal':'Calm', physical:hot?'Heat, sensitivity':'Normal', note:'' };
+    if (hidden) { cd.fertility = 'Paused (pregnancy)'; cd.note = 'Cycle frozen at conception'; }
 
     // Internal implementation note.
     if (hormonal && !hidden) { cd.fertility = 'Suppressed / uncertain'; cd.note = hormoneCycleHint(method, methodStatus); }
@@ -708,9 +710,9 @@ function cycleCardHtml(who, c, tr) {
             ${cycling && !hidden ? `<div class="repro-bar"><div class="repro-bar-fill cycle" style="width:${cyclePct}%"></div></div>` : ''}
             <div class="repro-grid">
                 ${carries ? stat('fa-droplet', 'green', 'Fertility', hidden ? 'Paused (pregnancy)' : delay > 0 ? 'Undetermined' : pp && !pp.cycleReturned ? 'Very low' : cd.fertility) : stat('fa-clock', 'purple', 'Phase', phase.name)}
-                ${stat('fa-fire', 'pink', 'Libido', tr(d.libido) || cd.libido)}
-                ${stat('fa-face-smile', 'purple', 'Mood', tr(d.mood) || cd.mood)}
-                ${stat('fa-heart', 'blue', 'Physical', tr(d.physical) || cd.physical)}
+                ${stat('fa-fire', 'pink', 'Libido', tr(d.libido) || (hidden ? tr(c.libido) : '') || cd.libido)}
+                ${stat('fa-face-smile', 'purple', 'Mood', tr(d.mood) || (hidden ? tr(c.mood) : '') || cd.mood)}
+                ${stat('fa-heart', 'blue', 'Physical', tr(d.physical) || (hidden ? tr(c.physical) : '') || cd.physical)}
                 ${extraRows}
                 <div class="repro-note">${tr(d.note) || (hidden || delay > 0 ? 'Use current symptoms and scene facts.' : pp && !pp.cycleReturned ? 'Cycle has not resumed yet.' : cd.note)}</div>
             </div>
@@ -1082,8 +1084,9 @@ export function showQuickBar() {
                 <div class="rp-quick-status">${statusHtml}</div>
                 ${(!isTracked('user')) ? '' : p.isPregnant
                     ? `<div class="rp-quick-cycle">
-                        <span class="rp-quick-lbl">Menstrual cycle</span>
-                        <span>Day ${day}/${cycleLength(s,'user')} · Paused due to pregnancy${pregnancyIsKnown(p,s) ? '' : ' (character unaware)'}</span>
+                        <span class="rp-quick-lbl">Paused cycle day</span>
+                        <input type="number" id="rp-quick-cycleday" min="1" max="${cycleLength(s, 'user')}" value="${day}" class="text_pole" style="width:55px">
+                        <button class="rp-quick-set" id="rp-quick-setcycle">Set</button>
                     </div>`
                     : `<div class="rp-quick-cycle">
                         <span class="rp-quick-lbl">Cycle day</span>
@@ -1141,9 +1144,10 @@ export function showQuickBar() {
 
     const applyCycle = (v) => {
         v = Math.max(1, Math.min(cycleLength(getSettings(), 'user'), parseInt(v) || 1));
-        const saved = setManualCycleDay('user', v);
+        const pregnant = getPregnancyData().isPregnant;
+        const saved = pregnant ? setPausedCycleDay('user', v) : setManualCycleDay('user', v);
         if (saved === false) {
-            showNotification('Cycle paused; day not changed', 'warning');
+            showNotification('Cycle day was not saved; check that a chat is open and the day is valid', 'warning');
             return;
         }
         overlay.find('#rp-quick-cycleday').val(saved);
@@ -1151,8 +1155,10 @@ export function showQuickBar() {
         setTimeout(() => { updatePromptInjection(); syncUI(); }, 30);
         // Internal implementation note.
         const ph = getPhaseInfo(v);
-        overlay.find('.rp-quick-status').html(`Cycle day ${v}/${cycleLength(getSettings(), 'user')} · <span style="color:${ph.color}">${ph.name}</span>`);
-        showNotification(`Cycle day: ${v}`, 'success');
+        overlay.find('.rp-quick-status').text(pregnant
+            ? `Day ${saved}/${cycleLength(getSettings(), 'user')} · Cycle paused due to pregnancy${pregnancyIsKnown(getPregnancyData(),getSettings()) ? '' : ' (character unaware)'}`
+            : `Cycle day ${saved}/${cycleLength(getSettings(), 'user')} · ${ph.name}`);
+        showNotification(pregnant ? `Paused cycle day corrected to ${saved}` : `Cycle day: ${saved}`, 'success');
     };
     overlay.find('.rp-quick-step').on('click', function() {
         const cur = parseInt(overlay.find('#rp-quick-cycleday').val()) || 1;
@@ -1384,10 +1390,14 @@ export function syncUI() {
     const cycInfo = el('repro-currentcycle');
     const cycRow = el('repro-cycle-row');
     if (cycInfo) cycInfo.style.display = isTracked('user') ? '' : 'none';
-    if (cycRow) cycRow.style.display = isTracked('user') && hasCycle(s, 'user') && !p.isPregnant && !lossCyclePaused('user') && !(getPostpartum(p,p)&&!getPostpartum(p,p).cycleReturned) ? 'flex' : 'none';
+    if (cycRow) cycRow.style.display = isTracked('user') && (p.isPregnant || (hasCycle(s, 'user') && !lossCyclePaused('user') && !(getPostpartum(p,p)&&!getPostpartum(p,p).cycleReturned))) ? 'flex' : 'none';
+    const cycleDayLabel = el('repro-cycle-day-label');
+    if (cycleDayLabel) cycleDayLabel.textContent = p.isPregnant ? 'Paused day at conception:' : 'Cycle day:';
     const partnerRow = el('repro-partner-cycle-row');
-    if (partnerRow) partnerRow.style.display = isTracked('char') && hasCycle(s, 'char') && !getPartnerData().isPregnant && !lossCyclePaused('char') && !(getPostpartum(getPartnerData(),p)&&!getPostpartum(getPartnerData(),p).cycleReturned) ? '' : 'none';
-    const partnerDay = getPartnerData().cycleDay || 1;
+    if (partnerRow) partnerRow.style.display = isTracked('char') && (getPartnerData().isPregnant || (hasCycle(s, 'char') && !lossCyclePaused('char') && !(getPostpartum(getPartnerData(),p)&&!getPostpartum(getPartnerData(),p).cycleReturned))) ? '' : 'none';
+    const partnerCycleSetButton = el('repro-partner-cycle-set');
+    if (partnerCycleSetButton) partnerCycleSetButton.textContent = getPartnerData().isPregnant ? 'Set paused day' : 'Set bot cycle day';
+    const partnerDay = getPausedCycleDay('char');
     const partnerInput = el('repro-partner-cycle-day');
     if (partnerInput) { partnerInput.value = partnerDay; partnerInput.max = cycleLength(s, 'char'); }
     const partnerInfo = el('repro-partner-cycle-info');
@@ -2015,7 +2025,7 @@ export function setupUI() {
             <hr>
             <div id="repro-currentcycle" class="rp-cycle-info"></div>
             <div id="repro-cycle-row" style="display:flex;gap:4px;align-items:center">
-                <span style="font-size:9px;opacity:0.5">Cycle day:</span>
+                <span id="repro-cycle-day-label" style="font-size:9px;opacity:0.5">Cycle day:</span>
                 <input type="number" id="repro-cycleday" min="1" max="365" value="${getCycleDay()}" class="text_pole" style="width:45px">
                 <button id="repro-setcycle" class="menu_button">${ic('fa-check')}</button>
             </div>
@@ -2344,7 +2354,11 @@ export function setupUI() {
         });
         $('#repro-universe').on('change', function() { getSettings().universe = this.value; refreshAll(); });
         const applyPartnerCycle = () => {
-            setManualCycleDay('char', $('#repro-partner-cycle-day').val());
+            const pregnant = getPartnerData().isPregnant;
+            const saved = pregnant ? setPausedCycleDay('char', Number($('#repro-partner-cycle-day').val()))
+                : setManualCycleDay('char', $('#repro-partner-cycle-day').val());
+            if (saved === false) { showNotification('Cycle day was not saved', 'warning'); syncUI(); return; }
+            if (pregnant) showNotification(`Paused cycle day corrected to ${saved}`, 'success');
             refreshAll();
         };
         $('#repro-partner-cycle-set').on('click', applyPartnerCycle);
@@ -2432,13 +2446,15 @@ export function setupUI() {
         const applyManualCycle = (v) => {
             if (warnIfNoChat()) return;
             v = Math.max(1, Math.min(cycleLength(getSettings(), 'user'), parseInt(v) || 14));
-            const saved = setManualCycleDay('user', v);
+            const pregnant = getPregnancyData().isPregnant;
+            const saved = pregnant ? setPausedCycleDay('user', v) : setManualCycleDay('user', v);
             if (saved === false) {
-                showNotification('Cycle paused; day not changed', 'warning');
+                showNotification('Cycle day was not saved', 'warning');
                 syncUI();
                 return;
             }
             $('#repro-cycleday').val(saved);
+            if (pregnant) showNotification(`Paused cycle day corrected to ${saved}`, 'success');
             saveSettingsDebounced();
             setTimeout(() => { updatePromptInjection(); syncUI(); }, 50);
         };
@@ -2454,7 +2470,8 @@ export function setupUI() {
             }
         });
         $('#repro-cycleday').on('change blur', function() {
-            applyManualCycle($(this).val());
+            // Keep explicit Set/Enter as the only writer for a paused pregnancy day.
+            if (!getPregnancyData().isPregnant) applyManualCycle($(this).val());
         });
 
         $('#repro-reset').on('click', function() { if (confirm('Reset pregnancy?')) { resetPregnancy(); showNotification('Reset', 'info'); } });

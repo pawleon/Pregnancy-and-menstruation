@@ -614,6 +614,11 @@ export function L(key) {
 // ─── Cycle day accessors (per-chat) ───
 export function getCycleDay() {
     const p = getPregnancyData();
+    // Pregnant carriers use the saved conception-day snapshot, never the RP calendar.
+    if (p.isPregnant && Number.isInteger(p.cycleDayAtConception) &&
+        p.cycleDayAtConception >= 1 && p.cycleDayAtConception <= cycleLength(getSettings(), 'user')) {
+        return p.cycleDayAtConception;
+    }
     if (typeof p.cycleDay === 'number' && p.cycleDay >= 1 && p.cycleDay <= cycleLength(getSettings(), 'user') + Math.max(0, parseInt(p._cycleShift) || 0)) {
         return p.cycleDay;
     }
@@ -624,8 +629,18 @@ export function getCycleDay() {
     return p.cycleDay;
 }
 
+export function getPausedCycleDay(who = 'user') {
+    const c = who === 'char' ? getPartnerData() : getPregnancyData();
+    const max = cycleLength(getSettings(), who);
+    const raw = c.isPregnant && Number.isInteger(c.cycleDayAtConception)
+        ? c.cycleDayAtConception : c.cycleDay;
+    return Math.max(1, Math.min(max, Number.isInteger(raw) ? raw : 1));
+}
+
 export function setCycleDay(day, updateTimestamp = true, isUserAction = false) {
     const p = getPregnancyData();
+    // Normal RP_DATE and CYCLE_DAY processing cannot move a pregnant cycle.
+    if (p.isPregnant) return getCycleDay();
     // Internal implementation note.
     // Internal implementation note.
     const maxDay = cycleLength(getSettings(), 'user') + Math.max(0, parseInt(p._cycleShift) || 0);

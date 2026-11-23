@@ -74,6 +74,7 @@ export const defaultPregnancyData = {
     _stats: { checks: 0, conceptions: 0 },
     // Internal implementation note.
     cycleDay: 1,
+    cycleDayAtConception: null,
     lastCycleUpdate: null,
     conceptionDate: null,
     pregnancyWeeks: 0,
@@ -96,6 +97,7 @@ export const defaultPregnancyData = {
     // Pregnancy extras
     mood: '',
     libido: '',
+    physical: '',
     weightGain: '',
     babyActivity: '',
     // Baby data (after birth)
@@ -148,6 +150,7 @@ export const defaultPregnancyData = {
 export const defaultPartnerData = {
     isPregnant: false,
     cycleDay: 1,
+    cycleDayAtConception: null,
     lastCycleUpdate: null,
     conceptionDate: null,
     pregnancyWeeks: 0,
@@ -164,6 +167,7 @@ export const defaultPartnerData = {
     healthStatus: 'normal',
     mood: '',
     libido: '',
+    physical: '',
     weightGain: '',
     babyActivity: '',
     fatherName: '',

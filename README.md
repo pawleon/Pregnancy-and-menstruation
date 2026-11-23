@@ -264,3 +264,8 @@ node --experimental-default-type=module --test tests/pregnancy-event-guards.test
 Regression tests: `node --experimental-default-type=module --test tests/pregnancy-event-guards.test.mjs tests/pregnancy-complication-corrections.test.mjs`
 
 Automated tests cover parsing, false-positive rejection, manual correction, per-carrier isolation, obstetric-date preservation, and rescan suppression. Live SillyTavern validation is still needed for legacy chat metadata.
+
+
+## v3.22.2 — Scene-based pregnancy day counter
+
+The Cycle infoblock advances its **display-only** scene-day counter by full days elapsed since conception, regardless of whether the character knows about pregnancy. Menstrual state remains frozen during pregnancy, and the pregnancy timeline continues to derive from RP dates. For a November 15 midnight conception and a frozen Day 8, November 16 08:24 displays **Day 9/28 · scene-based status**. The cycle card no longer shows menstrual hygiene, delayed menstruation, or trying-to-conceive indicators during pregnancy. No pregnancy scanner, RP date parser, or cycle state mutation logic was changed.

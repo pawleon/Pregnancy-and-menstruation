@@ -10,8 +10,9 @@ function cycleSummary(who, c, s) {
     if (lossCyclePaused(who)) return 'Cycle paused — recovery after pregnancy loss';
     const day = (who === 'char' ? (c.cycleDay || 1) : getCycleDay()) + (c.isPregnant ? daysSinceConception(c, getPregnancyData()) : 0);
     const length = cycleLength(s, who);
-    if (day > length) return `Delay ${day - length} days`;
+    // A pregnant carrier's menstrual cycle is paused, not the scene-day display.
     if (c.isPregnant) return `Day ${day}/${length} · scene-based status`;
+    if (day > length) return `Delay ${day - length} days`;
     const h=heatDay(s,who,day,getPregnancyData().rpDate);
     if (h && heatSettings(s,who).mode==='independent'){
         const phase=h.unanchored?'Heat/rut waiting for RP date':`${h.type==='rut'?'Rut':'Heat'} ${h.day}/${h.length}${h.active?` (active ${h.day}/${h.end})`:' (between)'}`;
@@ -621,15 +622,17 @@ function cycleCardHtml(who, c, tr) {
     const p0 = getPregnancyData();
     // Internal implementation note.
     // Internal implementation note.
-    const hidden = c.isPregnant && !pregnancyIsKnown(c, s);
+    // Presentation-only: elapsed RP days are added irrespective of whether
+    // the character knows they are pregnant; c.cycleDay remains unchanged.
+    const pregnant = !!c.isPregnant;
     const frozenDay = who === 'char' ? Math.max(1, c.cycleDay || 1) : getCycleDay();
-    const rawDay = hidden ? frozenDay + daysSinceConception(c, p0) : frozenDay;
+    const rawDay = frozenDay + (pregnant ? daysSinceConception(c, p0) : 0);
     const len = cycleLength(s, who), bleed = bleedingDays(s, who);
     const day = Math.max(1, Math.min(len, rawDay));
     const method = getContraception(who);
     const methodStatus = contraceptionStatus(method, getContraceptionDetails(who), p0.rpDate);
     const hormonal = ['implant','injection','pill','patch','ring'].includes(method) && methodStatus.active;
-    const phase = hidden ? { name: 'Scene-based status' } : getPhaseInfo(day, 'ru', who);
+    const phase = pregnant ? { name: 'Scene-based status' } : getPhaseInfo(day, 'ru', who);
     const cycling = hasCycle(s, who);
     const carries = canCarry(s, who);
     const role = isOmegaverse(s) ? roleLabel(s, who) : '';
@@ -642,14 +645,14 @@ function cycleCardHtml(who, c, tr) {
     const delay = missedDays(rawDay, len);
     const pp = getPostpartum(c, p0);
     if(pp && !pp.cycleReturned)cd.note='Cycle paused during postpartum recovery; last cycle day is not current.';
-    const win = carries && s.tryingToConceive && !hormonal ? fertileWindow(day, len) : null;
+    const win = carries && !pregnant && s.tryingToConceive && !hormonal ? fertileWindow(day, len) : null;
     const testRes = c.lastTestResult;
 
     let extraRows = '';
     let hygieneReminder = false;
 
     // Internal implementation note.
-    if (hasMenstrualCycle(s,who) && day <= bleed && (!pp || pp.cycleReturned) && !hidden) {
+    if (hasMenstrualCycle(s,who) && day <= bleed && (!pp || pp.cycleReturned) && !pregnant) {
         const flow = getFlow(day, bleed);
         const hrs = hoursBetween(c.hygieneChangedRpDate, p0.rpDate);
         const hy = getHygieneState(c.hygieneType || 'pad', hrs, flow);
@@ -662,7 +665,7 @@ function cycleCardHtml(who, c, tr) {
         }
     }
 
-    if (carries && delay > 0 && !pp) {
+    if (carries && delay > 0 && !pp && !pregnant) {
         extraRows += stat('fa-calendar-xmark', 'orange', 'Delay', `${delay} days`);
     }
     if (testRes && carries) {
@@ -684,6 +687,7 @@ function cycleCardHtml(who, c, tr) {
     const separateHeat=heatInfo && heatSettings(s,who).mode==='independent';
     const heatBadge=separateHeat ? (heatInfo.unanchored?'Heat/rut: RP date needed':`${heatInfo.type==='rut'?'Rut':'Heat'} ${heatInfo.day}/${heatInfo.length}${heatInfo.active?' active':''}`):'';
     const badge = pp && !pp.cycleReturned ? `Cycle paused · postpartum ${pp.days}d`
+        : pregnant ? `Day ${rawDay}/${len} · scene-based status${separateHeat ? ` · ${heatBadge}` : ''}`
         : separateHeat ? ((hasMenstrualCycle(s,who)||hasOvulation(s,who))?`Cycle ${day}/${len} · ${heatBadge}`:heatBadge)
         : !cycling ? (role || 'Scene-based')
         : delay > 0 ? `Delay ${delay} days`
@@ -699,12 +703,12 @@ function cycleCardHtml(who, c, tr) {
         <div class="repro-c">
             ${cycling ? `<div class="repro-bar"><div class="repro-bar-fill cycle" style="width:${cyclePct}%"></div></div>` : ''}
             <div class="repro-grid">
-                ${carries ? stat('fa-droplet', 'green', 'Fertility', hidden || delay > 0 ? 'Undetermined' : pp && !pp.cycleReturned ? 'Very low' : cd.fertility) : stat('fa-clock', 'purple', 'Phase', phase.name)}
+                ${carries ? stat('fa-droplet', 'green', 'Fertility', pregnant || delay > 0 ? 'Undetermined' : pp && !pp.cycleReturned ? 'Very low' : cd.fertility) : stat('fa-clock', 'purple', 'Phase', phase.name)}
                 ${stat('fa-fire', 'pink', 'Libido', tr(d.libido) || cd.libido)}
                 ${stat('fa-face-smile', 'purple', 'Mood', tr(d.mood) || cd.mood)}
                 ${stat('fa-heart', 'blue', 'Physical', tr(d.physical) || cd.physical)}
                 ${extraRows}
-                <div class="repro-note">${tr(d.note) || (hidden || delay > 0 ? 'Use current symptoms and scene facts.' : pp && !pp.cycleReturned ? 'Cycle has not resumed yet.' : cd.note)}</div>
+                <div class="repro-note">${tr(d.note) || (pregnant || delay > 0 ? 'Use current symptoms and scene facts.' : pp && !pp.cycleReturned ? 'Cycle has not resumed yet.' : cd.note)}</div>
             </div>
         </div>
     </details>`;

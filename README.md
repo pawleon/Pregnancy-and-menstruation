@@ -284,3 +284,10 @@ Pregnant scene-day badges now use **RP calendar-day transitions**, not completed
 ## v3.22.5 — Save manual pregnancy scene day safely
 
 Fixes the quick Cycle day editor falsely showing success while `setManualCycleDay` silently returned false for pregnant carriers. During pregnancy, an explicit manual correction now persists a **separate per-chat scene-day display anchor**, with the latest saved RP_DATE used to avoid a stale timestamp. It never changes the frozen menstrual day, pregnancy discovery, conception date, fetuses, weeks, or fertility state. The scene-day anchor continues advancing with later RP calendar dates and applies only to the same conception. The quick panel labels the field **Scene-based day**, uses the live scene number as its initial value, updates the infoblock immediately, and no longer reports success when a save fails.
+
+
+## v3.22.6 — Player-facing explanation for paused pregnancy cycles
+
+During pregnancy, the menstrual cycle stays frozen at the stored day, with a clear **Cycle paused (pregnancy)** infoblock badge and a player-facing explanation even if the RP character has not discovered the pregnancy. The existing `pregnancyIsKnown()` branch switches to the Pregnancy card on in-story discovery. The quick panel replaces the unavailable manual day setter with the pause explanation; any failed manual setter shows a warning instead of false success. RP time and gestational weeks continue advancing, distinct from the menstrual cycle. The injected LLM prompt clarifies the same rule and keeps pregnancy knowledge private until established in the RP.
+
+The experimental scene-day counter, manual scene-day override and redundant RP-date synchronization added in v3.22.2–v3.22.5 have been superseded and their code removed; original event/date handling has been restored. Existing per-chat pregnancy records and awareness, conception date, fetus details, loss, postpartum and other state are not reset or migrated. Old `_pregnancySceneDayManual` metadata remains inert and untouched. Conception probabilities, contraception rules, Omegaverse, and miscarriage behavior are unchanged.

@@ -190,7 +190,8 @@ export function getBasePrompt() {
     let b = `[REPRO TRACKER] ${universe}. Tracked=${active.join(',') || 'none'}; carriers=${active.filter(w => canCarry(s, w)).join(',') || 'none'}. State is authoritative; do not infer anatomy/carrier status.\n`;
     b += '[RP TIME & CYCLE] The supplied RP date and cycle day are the last recorded state, not necessarily the current scene\'s final state.\n';
     if (p.rpDate) b += `RP time=${new Date(p.rpDate).toLocaleString('en-GB', { hour12: false })}.\n`;
-    b += 'Advance RP time only by actual story events, including overnight transitions and time skips. Each elapsed calendar day advances the cycle by one, respecting its configured length and any pregnancy/postpartum pauses.\n';
+    b += 'Advance RP time only by actual story events, including overnight transitions and time skips. A calendar day advances the menstrual cycle only when it is active. Pregnancy pauses the biological cycle at its saved day, while RP time and gestational weeks continue advancing.\n';
+    b += 'The reproductive tracker UI is PLAYER-ONLY information; private pregnancy tracking never grants RP-character knowledge. Do not reveal pregnancy in narration, dialogue or RP_STATUS without an actual in-story discovery. Never force a pregnancy test or revelation.\n';
     b += 'Keep narration and RP_STATUS consistent with the scene\'s final date and cycle state. Do not repeat stale values when time has advanced; do not invent changes when it hasn\'t.\n';
     b += 'Identity: {{user}}=player, {{char}}=bot. Keep their states separate. Do not reveal private tracker facts without scene evidence.\n';
     b += active.map(w=>`${w}: sex=${s[w==='char'?'sexChar':'sexUser']||'unspecified'}, canCarry=${canCarry(s,w)}, bleeds=${hasMenstrualCycle(s,w)}, ovulates=${hasOvulation(s,w)}`).join(' | ')+'\n';

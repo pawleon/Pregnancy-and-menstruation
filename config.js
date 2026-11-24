@@ -72,6 +72,8 @@ export const defaultSettings = {
 export const defaultPregnancyData = {
     isPregnant: false,
     _stats: { checks: 0, conceptions: 0 },
+    // One hidden RNG threshold per menstrual cycle. Repeated exposures update this pool.
+    _conceptionPool: null,
     // Internal implementation note.
     cycleDay: 1,
     cycleDayAtConception: null,
@@ -149,6 +151,7 @@ export const defaultPregnancyData = {
 // Internal implementation note.
 export const defaultPartnerData = {
     isPregnant: false,
+    _conceptionPool: null,
     cycleDay: 1,
     cycleDayAtConception: null,
     lastCycleUpdate: null,

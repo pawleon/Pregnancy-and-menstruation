@@ -584,6 +584,88 @@ export function applyScanResult(result) {
     return updated;
 }
 
+
+// One hidden conception threshold per cycle. Repeated eligible exposures update
+// the same pool instead of drawing a new pregnancy roll every time.
+function conceptionCycleIdentity(carrier, who, root, currentDay) {
+    const s = getSettings();
+    const length = cycleLength(s, who);
+    const day = Math.max(1, Math.trunc(Number(currentDay)) || 1);
+    const old = carrier?._conceptionPool;
+    if (!old?.cycleKey) return { cycleKey:`${who}:${length}:1`, sequence:1, cycleLength:length };
+
+    let same = old.cycleLength === length && Number.isInteger(old.lastCycleDay);
+    if (same && day < old.lastCycleDay) same = false; // ordinary cycle wrap
+
+    // A long RP jump can cross a whole cycle and land on the same/later day.
+    // Use elapsed duration only to detect that wrap; this avoids timezone-sensitive
+    // midnight splits such as Day 7 at 23:xx -> Day 8 at 00:xx.
+    if (same && old.lastRpDate && root?.rpDate) {
+        const before = new Date(old.lastRpDate).getTime();
+        const now = new Date(root.rpDate).getTime();
+        if (Number.isFinite(before) && Number.isFinite(now) && now >= before) {
+            const elapsedDays = Math.max(0, Math.round((now - before) / 86400000));
+            const oldShift = Math.max(0, Math.trunc(Number(old.cycleShift)) || 0);
+            const effectiveLength = length + oldShift;
+            const distanceThroughWrap = Math.max(1, effectiveLength - old.lastCycleDay + day);
+            if (elapsedDays >= distanceThroughWrap) same = false;
+        }
+    }
+
+    if (same) return { cycleKey:old.cycleKey, sequence:old.sequence || 1, cycleLength:length };
+    const sequence = Number.isInteger(old.sequence) ? old.sequence + 1 : 1;
+    return { cycleKey:`${who}:${length}:${sequence}`, sequence, cycleLength:length };
+}
+
+function pooledConceptionChance(exposures) {
+    const values = (Array.isArray(exposures) ? exposures : [])
+        .map(x => Math.max(0, Math.min(100, Number(x?.chance) || 0)))
+        .filter(x => x > 0)
+        .sort((a,b) => b-a);
+    if (!values.length) return 0;
+    let total = values[0];
+    // Strongest exposure dominates. Additional exposures have rapidly diminishing weight:
+    // second 25%, third 12.5%, fourth 6.25%, etc.
+    for (let i=1; i<values.length; i++) total += values[i] * (0.25 * Math.pow(0.5, i-1));
+    return Math.max(0, Math.min(100, Math.round(total)));
+}
+
+function addConceptionExposure(carrier, who, root, currentDay, exposureChance, contraceptionFailed, methods=[]) {
+    const identity = conceptionCycleIdentity(carrier, who, root, currentDay);
+    let pool = carrier._conceptionPool;
+    if (!pool || pool.cycleKey !== identity.cycleKey) {
+        pool = carrier._conceptionPool = {
+            cycleKey: identity.cycleKey,
+            sequence: identity.sequence,
+            cycleLength: identity.cycleLength,
+            cycleShift: Math.max(0, Math.trunc(Number(carrier?._cycleShift)) || 0),
+            roll: roll(100),
+            chance: 0,
+            exposures: [],
+            lastCycleDay: currentDay,
+            createdRpDate: root?.rpDate || null,
+            lastRpDate: root?.rpDate || null,
+        };
+    }
+    if (!Array.isArray(pool.exposures)) pool.exposures = [];
+    pool.exposures.push({
+        day: currentDay,
+        chance: exposureChance,
+        rpDate: root?.rpDate || null,
+        contraceptionFailed: !!contraceptionFailed,
+        methods: Array.isArray(methods) ? methods.map(x => x?.method || x).filter(Boolean) : [],
+    });
+    pool.lastCycleDay = currentDay;
+    pool.lastRpDate = root?.rpDate || pool.lastRpDate || null;
+    pool.cycleShift = Math.max(0, Math.trunc(Number(carrier?._cycleShift)) || 0);
+    pool.chance = pooledConceptionChance(pool.exposures);
+    return pool;
+}
+
+function clearConceptionPool(carrier) {
+    if (carrier) carrier._conceptionPool = null;
+}
+
 export function checkConception(encounterMethods = []) {
     const s = getSettings();
     const p = getPregnancyData();
@@ -612,17 +694,25 @@ export function checkConception(encounterMethods = []) {
     const contraception = getContraception('user');
     const protection = protectionRoll(contraception, getContraceptionDetails('user'), p.rpDate, Math.random, encounterMethods);
     const contraceptionFailed = protection.methods.length > 0 && !protection.protected;
-    if (protection.protected) chance = 0;
-    else if (contraceptionFailed && s.showNotifications) showNotification(L('contraceptionFailed'), 'warning');
+    const exposureChance = protection.protected ? 0 : chance;
+    if (contraceptionFailed && s.showNotifications) showNotification(L('contraceptionFailed'), 'warning');
 
-    const conceptionRoll = roll(100);
-    const success = conceptionRoll <= chance;
+    // Protected encounters and biologically impossible/disabled windows do not inflate the pool.
+    const pool = exposureChance > 0
+        ? addConceptionExposure(p, 'user', p, currentCycleDay, exposureChance, contraceptionFailed, protection.methods)
+        : p._conceptionPool;
+    const cycleChance = exposureChance > 0 ? pool.chance : (pool?.chance || 0);
+    const conceptionRoll = exposureChance > 0 ? pool.roll : (pool?.roll ?? null);
+    const success = exposureChance > 0 && conceptionRoll <= cycleChance;
 
     const result = {
         roll: conceptionRoll,
-        chance,
+        chance: cycleChance,
+        exposureChance,
+        exposureCount: pool?.exposures?.length || 0,
         contraception,
         contraceptionFailed,
+        protected: protection.protected,
         cycleDay: currentCycleDay,
         success,
     };
@@ -630,6 +720,7 @@ export function checkConception(encounterMethods = []) {
     if (success) {
         p.cycleDayAtConception = getCycleDay();
         p.isPregnant = true;
+        clearConceptionPool(p);
     p.lossRecovery = null;
         s._birthBlockedUntilUser = null;
         // Internal implementation note.
@@ -669,14 +760,18 @@ export function checkConception(encounterMethods = []) {
 
         if (s.showNotifications) {
             if (p.pregnancyKnown) {
-                showNotification(`<i class="fa-solid fa-check"></i> Pregnancy! Day ${currentCycleDay}, ${conceptionRoll}/${chance}<br>${formatFetusCount(p.fetusCount)} | Sex: ?`, 'success');
+                showNotification(`<i class="fa-solid fa-check"></i> Pregnancy! Day ${currentCycleDay}, cycle pool ${conceptionRoll}/${cycleChance}<br>${formatFetusCount(p.fetusCount)} | Sex: ?`, 'success');
             } else {
                 showNotification(`<i class="fa-solid fa-user-secret"></i> Conception occurred, but she does not know yet. Wait for a missed period and take a test.`, 'success');
             }
         }
-    } else {
-        if (s.showNotifications) {
-            showNotification(`<i class="fa-solid fa-xmark"></i> Not pregnant. Day ${currentCycleDay}, ${conceptionRoll}/${chance}`, 'info');
+    } else if (s.showNotifications) {
+        if (protection.protected) {
+            showNotification(`<i class="fa-solid fa-shield"></i> Protected encounter — conception pool unchanged`, 'info');
+        } else if (exposureChance <= 0) {
+            showNotification(`<i class="fa-solid fa-xmark"></i> No conception chance for this encounter`, 'info');
+        } else {
+            showNotification(`<i class="fa-solid fa-xmark"></i> No conception yet. Day ${currentCycleDay} · exposure ${exposureChance}% · cycle pool ${cycleChance}% · roll ${conceptionRoll}`, 'info');
         }
     }
 
@@ -888,6 +983,7 @@ export function createPregnancyFromWeeks(weeks, { notify = true } = {}) {
     const elapsedWeeks=Math.max(0,w-(mode==='obstetric'?2:0));
     p.cycleDayAtConception = getCycleDay();
     p.isPregnant = true;
+    clearConceptionPool(p);
     p.lossRecovery = null;
     p.datingMode=mode;
     p.conceptionDate = new Date(anchor.getTime() - elapsedWeeks * 7 * 86400000).toISOString();
@@ -924,6 +1020,7 @@ export function createPregnancyFromStateTag(pregState, { notify = true } = {}) {
 
     p.cycleDayAtConception = getCycleDay();
     p.isPregnant = true;
+    clearConceptionPool(p);
     p.lossRecovery = null;
     p.conceptionDate = pregState.conceptionDate;
     p.datingMode = s.pregnancyDatingMode==='obstetric'?'obstetric':'conception';
@@ -969,6 +1066,7 @@ export function startManualPregnancy(conceptionDateISO, fetusCount, fetusSex = n
     }
     p.cycleDayAtConception = getCycleDay();
     p.isPregnant = true;
+    clearConceptionPool(p);
     p.lossRecovery = null;
     p.datingMode=s.pregnancyDatingMode;
     p.conceptionDate = conceptionDateISO;
@@ -1197,15 +1295,21 @@ export function partnerCheckConception(encounterMethods = []) {
     if (isOmegaverse(s) && heatRules.fertility==='boost' && heat?.active)chance=Math.min(100,Math.round(chance*1.5));
     const contraception = getContraception('char');
     const protection = protectionRoll(contraception, getContraceptionDetails('char'), p.rpDate, Math.random, encounterMethods);
-    if (protection.protected) chance = 0;
-    else if (protection.methods.length > 0 && s.showNotifications) showNotification(L('contraceptionFailed'), 'warning');
+    const contraceptionFailed = protection.methods.length > 0 && !protection.protected;
+    const exposureChance = protection.protected ? 0 : chance;
+    if (contraceptionFailed && s.showNotifications) showNotification(L('contraceptionFailed'), 'warning');
 
-    const r = roll(100);
-    const success = r <= chance;
+    const pool = exposureChance > 0
+        ? addConceptionExposure(c, 'char', p, c.cycleDay || 1, exposureChance, contraceptionFailed, protection.methods)
+        : c._conceptionPool;
+    const cycleChance = exposureChance > 0 ? pool.chance : (pool?.chance || 0);
+    const r = exposureChance > 0 ? pool.roll : (pool?.roll ?? null);
+    const success = exposureChance > 0 && r <= cycleChance;
 
     if (success) {
         c.cycleDayAtConception = c.cycleDay || 1;
         c.isPregnant = true;
+        clearConceptionPool(c);
     c.lossRecovery = null;
         c.pregnancyKnown = !s.hiddenPregnancy;
         c.lastTestResult = null;
@@ -1228,13 +1332,19 @@ export function partnerCheckConception(encounterMethods = []) {
             showNotification(`<i class="fa-solid fa-check"></i> ${carrierName('char')} is pregnant! ${formatFetusCount(c.fetusCount)}`, 'success');
         }
     } else if (s.showNotifications) {
-        showNotification(`<i class="fa-solid fa-xmark"></i> ${carrierName('char')} — no conception (${r}/${chance})`, 'info');
+        if (protection.protected) {
+            showNotification(`<i class="fa-solid fa-shield"></i> ${carrierName('char')} — protected encounter; conception pool unchanged`, 'info');
+        } else if (exposureChance <= 0) {
+            showNotification(`<i class="fa-solid fa-xmark"></i> ${carrierName('char')} — no conception chance for this encounter`, 'info');
+        } else {
+            showNotification(`<i class="fa-solid fa-xmark"></i> ${carrierName('char')} — no conception yet · exposure ${exposureChance}% · cycle pool ${cycleChance}% · roll ${r}`, 'info');
+        }
     }
 
     saveSettingsDebounced();
     _syncUI();
     _updatePromptInjection();
-    return { success, roll: r, chance };
+    return { success, roll: r, chance: cycleChance, exposureChance, exposureCount: pool?.exposures?.length || 0, contraceptionFailed, protected: protection.protected };
 }
 
 // Internal implementation note.
@@ -1368,6 +1478,7 @@ export function startPartnerPregnancy(conceptionDateISO, fetusCount, fetusSex = 
     }
     c.cycleDayAtConception = c.cycleDay || 1;
     c.isPregnant = true;
+    clearConceptionPool(c);
     c.lossRecovery = null;
     c.datingMode=s.pregnancyDatingMode;
     c.conceptionDate = conceptionDateISO;
